@@ -1,0 +1,84 @@
+(namespace (an example module)
+
+(use (some example import) as ex)
+(use (some example import) (MyExampleThing MyOtherExampleThing))
+
+(struct (Vec T)
+    (length usize)
+    (capacity usize)
+    (values (* mut owned T)))
+
+(enum ExampleEnum
+    (Variant1 0)
+    Variant2
+    Variant3
+    (Variant4 42))
+
+(type String (Vec u8))
+
+(type (VecIter T 'a)
+    (vec (& 'a (Vec T)))
+    (index usize))
+
+(fn (iter T 'a) (self (& 'a (Vec T))) (VecIter T 'a)
+    (VecIter self 0))
+
+(struct IterEnd)
+
+(struct OutOfBounds
+    (index usize)
+    (bound usize))
+
+(fn (next T 'a) (self (& (VecIter T 'a))) (& T)
+    (with v (. self vec (get (. self index)))
+        v
+    (on (OutOfBounds _ _)
+        (throw IterEnd))))
+
+(struct (Enumerate T)
+    (iter T)
+    (index usize))
+
+(struct (Pair T U)
+    (first T)
+    (second U))
+
+(fn (next T U) (self (& (Enumerate T))) (Pair usize U)
+    (Pair (++ (. self index)) (. self iter (next))))
+
+(fn (push T) ((self (&mut (Vec T)) (value T)))
+    (seq
+        (if (>= (. self length) (. self capacity))
+            (realloc (&mut (. self values)) (*= (. self capacity) 2)))
+        (set (* (+ (. self values) (++ (. self length)))) value)))
+
+(fn (get T) ((self (& (Vec T))) (index (mut isize))) (& T)
+    (seq
+        (if (< index 0)
+            (set index (- (. self length) index)))
+        (if (ord 0 index (. self length))
+            (* (+ (. self values) index))
+        else
+            (throw (OutOfBounds index (. self length))))))
+
+(fn (new T) (vals (... T)) (Vec T)
+    (seq
+        (let mut vec (Vec 0 0 null))
+        (for (val (. vals (iter))
+            (. vec (push val))))
+        vec))
+
+(fn main
+    (seq
+        (let mut (vec (Vec usize)) (new 10 20 30 40))
+        /*
+            syntax sugar for
+            (loop
+                (iflet v (next iter)
+                    (...)
+                (on IterEnd break)))
+        */
+        (for (v (iter vec))
+            (println v))))
+
+)
