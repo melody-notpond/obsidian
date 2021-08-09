@@ -1,3 +1,4 @@
+{
 (namespace (an example module)
 
 (use (some example import) as ex)
@@ -30,7 +31,7 @@
     (bound usize))
 
 (fn (next T 'a) (self (& (VecIter T 'a))) (& T)
-    (with v (. self vec (get (. self index)))
+    (with v (get ((. self vec) (. self index)))
         v
     (on (OutOfBounds _ _)
         (throw IterEnd))))
@@ -44,7 +45,7 @@
     (second U))
 
 (fn (next T U) (self (& (Enumerate T))) (Pair usize U)
-    (Pair (++ (. self index)) (. self iter (next))))
+    (Pair (++ (. self index)) (next (. self iter))))
 
 (fn (push T) ((self (&mut (Vec T)) (value T)))
     (seq
@@ -64,21 +65,33 @@
 (fn (new T) (vals (... T)) (Vec T)
     (seq
         (let mut vec (Vec 0 0 null))
-        (for (val (. vals (iter))
-            (. vec (push val))))
+        (for (val (iter vals)
+            (push vec val)))
         vec))
+}
+
+(macro varargs (a b (... c)) (a b c))
+
+(macro quotes (a (quote x) b) (* a b))
+
+(macro for
+    ((i iterator)
+        stats)
+    (seq
+        (let mut iter iterator)
+        (loop
+            (iflet v (next iter)
+                stats
+            (on IterEnd break)))))
 
 (fn main
     (seq
         (let mut (vec (Vec usize)) (new 10 20 30 40))
-        /*
-            syntax sugar for
-            (loop
-                (iflet v (next iter)
-                    (...)
-                (on IterEnd break)))
-        */
         (for (v (iter vec))
-            (println v))))
+            (println v))
+        (quotes 1 x 2)
+        (varargs 1 2 3)
+        (varargs 1 2 3 4 5)
+        (varargs 1 2)))
 
-)
+;)

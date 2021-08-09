@@ -39,24 +39,12 @@ pub enum Token {
     #[token(")")]
     RParen,
 
-    #[token("[")]
-    LBrack,
-
-    #[token("]")]
-    RBrack,
-
-    #[token("{")]
-    LBrace,
-
-    #[token("}")]
-    RBrace,
-
     // Whitespace
     #[regex(r"([ \t\f\r\n])+", logos::skip)]
     Whitespace,
 
-    #[regex(r"//[^\n]*", logos::skip)]
-    #[regex(r"/\*([^\*]\*+)+/", logos::skip)]
+    #[regex(r";[^\n]*", logos::skip)]
+    #[regex(r"\{([^\}]*)\}", logos::skip)]
     Comment,
 
     // Error
@@ -90,7 +78,7 @@ pub enum Token {
     Char(u8),
 
     // Symbols (variables and stuff)
-    #[regex(r"[a-zA-Z_!@#$%^&*|\-=+;:,<.>/?~`][a-zA-Z0-9_!@#$%^&*|\-=+;:,<.>/?~`']*")]
+    #[regex(r"[a-zA-Z_!@#$%^&*|\-=+:,<.>/?~`][a-zA-Z0-9_!@#$%^&*|\-=+;:,<.>/?~`']*")]
     Symbol,
 
     #[regex(r"'[a-zA-Z_]+")]
@@ -203,7 +191,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum Ast {
     // Numbers
     Int(Span, i64),
@@ -229,6 +217,62 @@ pub enum Ast {
 
     // Programs
     Program(Span, Vec<Ast>),
+}
+
+impl Ast {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, indent: usize, first: bool) -> std::fmt::Result {
+        match self {
+            Ast::Int(_, i) => write!(f, "{:?}", i),
+            Ast::Float(_, v) => write!(f, "{:?}", v),
+            Ast::Word(_, w) => write!(f, "{:?}", w),
+            Ast::Char(_, c) => write!(f, "{:?}", c),
+            Ast::True(_) => write!(f, "true"),
+            Ast::False(_) => write!(f, "false"),
+            Ast::String(_, s) => write!(f, "{:?}", s),
+            Ast::Symbol(_, sym) => write!(f, "{}", sym),
+            Ast::Lifetime(_, lt) => write!(f, "{}", lt),
+            Ast::SExpr(_, sexpr) => {
+                if !first {
+                    writeln!(f)?;
+                    for _ in 0..indent {
+                        write!(f, "    ")?;
+                    }
+                }
+
+                write!(f, "(")?;
+                let mut first = true;
+                for expr in sexpr {
+                    if !first {
+                        write!(f, " ")?;
+                    }
+
+                    expr.fmt(f, indent + 1, first)?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
+
+            Ast::Program(_, prog) => {
+                for ast in prog {
+                    ast.fmt(f, indent, first)?;
+                    writeln!(f)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for Ast {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt(f, 0, true)
+    }
+}
+
+impl std::fmt::Display for Ast {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt(f, 0, true)
+    }
 }
 
 impl Ast {
