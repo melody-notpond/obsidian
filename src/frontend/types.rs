@@ -38,6 +38,7 @@ pub enum Type {
     VarArgs(Option<Box<Type>>),
 }
 
+#[derive(Debug, Clone)]
 pub enum TypeParseError {
     NotAType,
     NotASymbol,

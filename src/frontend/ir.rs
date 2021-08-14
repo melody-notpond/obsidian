@@ -1,5 +1,5 @@
 use logos::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::types::{self, Type, TypeParseError};
 use super::parser::Ast;
@@ -58,20 +58,150 @@ impl Default for SExprMetadata {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum IrParseError {
+    InvalidPattern,
+    NonRootPassedIntoRootFunction,
+    StrayLifetime,
+    ProgramInProgram,
+    InvalidFunction,
+    InvalidMutRef,
+    MissingIfClauses,
+    InvalidLoopArgs,
+    InvalidFunctionName,
+    InvalidFunctionValue,
+    InvalidFunctionGeneric,
+    TypeParseError(TypeParseError),
+    InvalidFunctionArg,
+    InvalidLet,
+    InvalidAssign,
+    InvalidStructName,
+    InvalidStructGeneric,
+    InvalidStructField,
+    InvalidEnum,
+    InvalidEnumVariant,
+    InvalidTypeDef,
+}
+
 #[derive(Clone, Debug)]
 pub enum Pattern {
     Wildcard,
     Name(String),
     MutName(String),
     Struct(String, HashMap<String, Pattern>),
-    Tuple(String, Vec<Pattern>),
+    Tuple(Vec<Pattern>),
     SRange(i64, i64),
     URange(u64, u64),
+    FRange(f64, f64),
     Or(Vec<Pattern>),
+    Enum(String),
 }
 
 fn parse_pattern(ast: Ast) -> Result<Pattern, IrParseError> {
-    Ok(Pattern::Wildcard)
+    match ast {
+        Ast::Symbol(_, sym) if sym == "_" => Ok(Pattern::Wildcard),
+        Ast::Symbol(_, sym) => Ok(Pattern::Name(sym)),
+        Ast::SExpr(_, mut sexpr) => {
+            if sexpr.is_empty() {
+                return Err(IrParseError::InvalidPattern);
+            }
+
+            match &sexpr[0] {
+                Ast::Symbol(_, sym) => {
+                    match sym.as_str() {
+                        "mut" => {
+                            if sexpr.len() == 1 && matches!(&sexpr[1], Ast::Symbol(_, _)){
+                                if let Ast::Symbol(_, sym) = sexpr.remove(1)  {
+                                    Ok(Pattern::MutName(sym))
+                                } else {
+                                    unreachable!()
+                                }
+                            } else {
+                                Err(IrParseError::InvalidPattern)
+                            }
+                        }
+
+                        "tuple" => Ok(Pattern::Tuple(
+                            sexpr.into_iter().skip(1).map(parse_pattern).collect::<Result<Vec<_>, _>>()?
+                        )),
+
+                        "any" => Ok(Pattern::Or(
+                            sexpr.into_iter().skip(1).map(parse_pattern).collect::<Result<Vec<_>, _>>()?
+                        )),
+
+                        "enum" => {
+                            if sexpr.len() == 1 && matches!(&sexpr[1], Ast::Symbol(_, _)){
+                                if let Ast::Symbol(_, sym) = sexpr.remove(1)  {
+                                    Ok(Pattern::Enum(sym))
+                                } else {
+                                    unreachable!()
+                                }
+                            } else {
+                                Err(IrParseError::InvalidPattern)
+                            }
+                        }
+
+                        _ => {
+                            let name = if let Ast::Symbol(_, sym) = sexpr.remove(0) {
+                                sym
+                            } else {
+                                unreachable!();
+                            };
+                            let mut map = HashMap::new();
+                            for expr in sexpr.into_iter() {
+                                match expr {
+                                    Ast::SExpr(_, mut sexpr) if sexpr.len() == 2 && matches!(&sexpr[0], Ast::Symbol(_, _)) => {
+                                        let pattern = sexpr.remove(1);
+                                        if let Ast::Symbol(_, sym) = sexpr.remove(0) {
+                                            map.insert(sym, parse_pattern(pattern)?);
+                                        }
+                                    }
+
+                                    _ => return Err(IrParseError::InvalidPattern),
+                                }
+                            }
+
+                            Ok(Pattern::Struct(name, map))
+                        }
+                    }
+                }
+
+                Ast::Int(_, i) => {
+                    if sexpr.len() != 2 || !matches!(&sexpr[0], Ast::Symbol(_, sym) if sym == "-") || !matches!(sexpr[1], Ast::Int(_, _)) {
+                        Err(IrParseError::InvalidPattern)
+                    } else if let Ast::Int(_, i2) = sexpr[1] {
+                        Ok(Pattern::SRange(*i, i2))
+                    } else {
+                        unreachable!();
+                    }
+                }
+
+                Ast::Word(_, w) => {
+                    if sexpr.len() != 2 || !matches!(&sexpr[0], Ast::Symbol(_, sym) if sym == "-") || !matches!(sexpr[1], Ast::Word(_, _)) {
+                        Err(IrParseError::InvalidPattern)
+                    } else if let Ast::Word(_, w2) = sexpr[1] {
+                        Ok(Pattern::URange(*w, w2))
+                    } else {
+                        unreachable!();
+                    }
+                }
+
+                Ast::Float(_, f) => {
+                    if sexpr.len() != 2 || !matches!(&sexpr[0], Ast::Symbol(_, sym) if sym == "-") || !matches!(sexpr[1], Ast::Float(_, _)) {
+                        Err(IrParseError::InvalidPattern)
+                    } else if let Ast::Float(_, f2) = sexpr[1] {
+                        Ok(Pattern::FRange(*f, f2))
+                    } else {
+                        unreachable!();
+                    }
+                }
+
+                _ => Err(IrParseError::InvalidPattern),
+            }
+        }
+
+        _ => Err(IrParseError::InvalidPattern),
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -134,7 +264,7 @@ pub enum SExpr {
     Function(SExprMetadata, String, Vec<String>, Vec<String>, Vec<(String, Type)>, Type,        Box<SExpr>),
 
     // Let expressions
-    Let(SExprMetadata, Pattern, Box<SExpr>),
+    Let(SExprMetadata, Pattern, Type, Box<SExpr>),
 
     // Assignment
     Assign(SExprMetadata, Pattern, Box<SExpr>),
@@ -144,27 +274,16 @@ pub enum SExpr {
     Struct(SExprMetadata, String, Vec<String>, Vec<String>, Vec<(String, Type)>),
 
     // Enums
-    Enum(SExprMetadata, String, Vec<(String, Option<isize>)>),
+    Enum(SExprMetadata, String, Type, Vec<(String, Option<i64>)>),
 
     // Tuples
     Tuple(SExprMetadata, Vec<SExpr>),
 
     // Type definitions
-    TypeDefinition(SExprMetadata, String, Vec<String>, Type),
+    TypeDefinition(SExprMetadata, String, Vec<String>, Vec<String>, Type),
 
     // Sequence of expressions executed in order
     Seq(SExprMetadata, Vec<SExpr>),
-
-    // Namespace definition
-    Namespace(SExprMetadata, Vec<String>),
-
-    // Import as
-    // (use (an example module) as uwu)
-    UseAs(SExprMetadata, Vec<String>, Option<String>),
-
-    // Import members
-    // (use (an example module) (MyExampleThing (MyOtherExampleThing MOET)))
-    UseMembers(SExprMetadata, Vec<String>, Vec<(String, String)>),
 }
 
 impl SExpr {
@@ -194,16 +313,13 @@ impl SExpr {
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
             | SExpr::Function(m, _, _, _, _, _, _)
-            | SExpr::Let(m, _, _)
+            | SExpr::Let(m, _, _, _)
             | SExpr::Assign(m, _, _)
             | SExpr::Struct(m, _, _, _, _)
-            | SExpr::Enum(m, _, _)
+            | SExpr::Enum(m, _, _, _)
             | SExpr::Tuple(m, _)
-            | SExpr::TypeDefinition(m, _, _, _)
-            | SExpr::Seq(m, _)
-            | SExpr::Namespace(m, _)
-            | SExpr::UseAs(m, _, _)
-            | SExpr::UseMembers(m, _, _) => m,
+            | SExpr::TypeDefinition(m, _, _, _, _)
+            | SExpr::Seq(m, _) => m,
         }
     }
 
@@ -233,16 +349,13 @@ impl SExpr {
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
             | SExpr::Function(m, _, _, _, _, _, _)
-            | SExpr::Let(m, _, _)
+            | SExpr::Let(m, _, _, _)
             | SExpr::Assign(m, _, _)
             | SExpr::Struct(m, _, _, _, _)
-            | SExpr::Enum(m, _, _)
+            | SExpr::Enum(m, _, _, _)
             | SExpr::Tuple(m, _)
-            | SExpr::TypeDefinition(m, _, _, _)
-            | SExpr::Seq(m, _)
-            | SExpr::Namespace(m, _)
-            | SExpr::UseAs(m, _, _)
-            | SExpr::UseMembers(m, _, _) => m,
+            | SExpr::TypeDefinition(m, _, _, _, _)
+            | SExpr::Seq(m, _) => m,
         }
     }
 }
@@ -255,21 +368,6 @@ pub struct IrModule {
 
 pub struct Ir {
     pub modules: HashMap<Vec<String>, IrModule>,
-}
-
-pub enum IrParseError {
-    NonRootPassedIntoRootFunction,
-    StrayLifetime,
-    ProgramInProgram,
-    InvalidFunction,
-    InvalidMutRef,
-    MissingIfClauses,
-    InvalidLoopArgs,
-    InvalidFunctionName,
-    InvalidFunctionValue,
-    InvalidFunctionGeneric,
-    TypeParseError(TypeParseError),
-    InvalidFunctionArg,
 }
 
 fn parse_exprs(exprs: Vec<Ast>, ir: &mut Ir, module: &mut IrModule) -> Result<Vec<SExpr>, IrParseError> {
@@ -323,6 +421,7 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                         "<<" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Bsl, parse_exprs(exprs, ir, module)?)),
                         ">>" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Bsr, parse_exprs(exprs, ir, module)?)),
                         "&" if exprs.len() == 1 => Ok(SExpr::Ref(SExprMetadata::new(span), Box::new(parse_ir_helper(exprs.remove(0), ir, module)?))),
+
                         "&mut" => {
                             if exprs.len() == 1 {
                                 Ok(SExpr::Ref(SExprMetadata::new(span), Box::new(parse_ir_helper(exprs.remove(0), ir, module)?)))
@@ -574,7 +673,7 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                                 let iter = parse_ir_helper(exprs.remove(1), ir, module)?;
                                 let pattern = parse_pattern(exprs.remove(0))?;
                                 Ok(SExpr::Loop(SExprMetadata::new(span.clone()), Some(Box::new(
-                                    SExpr::Let(SExprMetadata::new(span.clone()), Pattern::MutName(String::from("iter")), Box::new(iter))
+                                    SExpr::Let(SExprMetadata::new(span.clone()), Pattern::MutName(String::from("iter")), Type::Unassigned, Box::new(iter))
                                 )), Box::new(SExpr::IfLet(SExprMetadata::new(span.clone()),
                                     pattern,
                                     Box::new(SExpr::Application(SExprMetadata::new(span.clone()),
@@ -663,40 +762,176 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                             Ok(SExpr::Function(SExprMetadata::new(span), name, generics, lifetimes, args, return_type, Box::new(body)))
                         }
 
-                        /*
-    // Let expressions
-    Let(SExprMetadata, Pattern, Box<SExpr>),
+                        "let" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let pattern = parse_pattern(exprs.remove(0))?;
+                                Ok(SExpr::Let(SExprMetadata::new(span), pattern, Type::Unassigned, Box::new(value)))
+                            } else if exprs.len() == 3 {
+                                let value = parse_ir_helper(exprs.remove(2), ir, module)?;
+                                let type_ = match types::parse_type(exprs.remove(1), &HashSet::new()) {
+                                    Ok(v) => v,
+                                    Err(e) => return Err(IrParseError::TypeParseError(e)),
+                                };
+                                let pattern = parse_pattern(exprs.remove(0))?;
+                                Ok(SExpr::Let(SExprMetadata::new(span), pattern, type_, Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidLet)
+                            }
+                        }
 
-    // Assignment
-    Assign(SExprMetadata, Pattern, Box<SExpr>),
+                        "set" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let pattern = parse_pattern(exprs.remove(0))?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), pattern, Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
 
-    // Structs
-    //     metadata       name    generics     lifetimes    fields
-    Struct(SExprMetadata, String, Vec<String>, Vec<String>, Vec<(String, Type)>),
+                        "struct" => {
+                            if exprs.is_empty() {
+                                Err(IrParseError::InvalidStructName)
+                            } else {
+                                let (name, generics, lifetimes) = match exprs.remove(0) {
+                                    Ast::Symbol(_, sym) => (sym, vec![], vec![]),
+                                    Ast::SExpr(_, mut sexpr) => {
+                                        let name = match sexpr.remove(0) {
+                                            Ast::Symbol(_, sym) => sym,
+                                            _ => return Err(IrParseError::InvalidStructName),
+                                        };
 
-    // Enums
-    Enum(SExprMetadata, String, Vec<(String, Option<isize>)>),
+                                        let mut generics = vec![];
+                                        let mut lifetimes = vec![];
+                                        for expr in sexpr {
+                                            match expr {
+                                                Ast::Symbol(_, generic) => generics.push(generic),
+                                                Ast::Lifetime(_, lifetime) => lifetimes.push(lifetime),
+                                                _ => return Err(IrParseError::InvalidStructGeneric)
+                                            }
+                                        }
 
-    // Tuples
-    Tuple(SExprMetadata, Vec<SExpr>),
+                                        (name, generics, lifetimes)
+                                    }
 
-    // Type definitions
-    TypeDefinition(SExprMetadata, String, Type),
+                                    _ => return Err(IrParseError::InvalidStructName),
+                                };
 
-    // Sequence of expressions executed in order
-    Seq(SExprMetadata, Vec<SExpr>),
+                                let mut fields = vec![];
+                                let generics_set = generics.iter().collect();
+                                for expr in exprs {
+                                    match expr {
+                                        Ast::SExpr(_, mut vals) if vals.len() == 2 => {
+                                            let type_ = match types::parse_type(vals.remove(1), &generics_set) {
+                                                Ok(v) => v,
+                                                Err(e) => return Err(IrParseError::TypeParseError(e)),
+                                            };
 
-    // Namespace definition
-    Namespace(SExprMetadata, Vec<String>),
+                                            let name = match vals.remove(0) {
+                                                Ast::Symbol(_, sym) => sym,
+                                                _ => return Err(IrParseError::InvalidStructField),
+                                            };
 
-    // Import as
-    // (use (an example module) as uwu)
-    UseAs(SExprMetadata, Vec<String>, Option<String>),
+                                            fields.push((name, type_));
+                                        }
 
-    // Import members
-    // (use (an example module) (MyExampleThing (MyOtherExampleThing MOET)))
-    UseMembers(SExprMetadata, Vec<String>, Vec<(String, String)>),
-                        */
+                                        _ => return Err(IrParseError::InvalidStructField)
+                                    }
+                                }
+
+                                Ok(SExpr::Struct(SExprMetadata::new(span), name, generics, lifetimes, fields))
+                            }
+                        }
+
+                        "enum" => {
+                            if exprs.len() < 2 {
+                                Err(IrParseError::InvalidEnum)
+                            } else {
+                                let (name, type_) = match exprs.remove(0) {
+                                    Ast::Symbol(_, sym) => (sym, Type::I32),
+                                    Ast::SExpr(_, mut vals) if vals.len() == 2 => {
+                                        let type_ = match types::parse_type(vals.remove(1), &HashSet::new()) {
+                                            Ok(v) => v,
+                                            Err(e) => return Err(IrParseError::TypeParseError(e)),
+                                        };
+                                        let name = match vals.remove(0) {
+                                            Ast::Symbol(_, sym) => sym,
+                                            _ => return Err(IrParseError::InvalidEnum),
+                                        };
+
+                                        (name, type_)
+                                    }
+
+                                    _ => return Err(IrParseError::InvalidEnum)
+                                };
+
+                                let mut variants = vec![];
+                                for expr in exprs {
+                                    match expr {
+                                        Ast::Symbol(_, sym) => variants.push((sym, None)),
+                                        Ast::SExpr(_, mut vals) if vals.len() == 2 => {
+                                            let val = match vals.remove(1) {
+                                                Ast::Int(_, i) => i,
+                                                _ => return Err(IrParseError::InvalidEnumVariant),
+                                            };
+
+                                            let name = match vals.remove(0) {
+                                                Ast::Symbol(_, sym) => sym,
+                                                _ => return Err(IrParseError::InvalidEnumVariant),
+                                            };
+
+                                            variants.push((name, Some(val)));
+                                        }
+
+                                        _ => return Err(IrParseError::InvalidEnumVariant)
+                                    }
+                                }
+
+                                Ok(SExpr::Enum(SExprMetadata::new(span), name, type_, variants))
+                            }
+                        }
+
+                        "tuple" => Ok(SExpr::Tuple(SExprMetadata::new(span), parse_exprs(exprs, ir, module)?)),
+
+                        "type" => {
+                            if exprs.len() != 2 {
+                                Err(IrParseError::InvalidTypeDef)
+                            } else {
+                                let (name, generics, lifetimes) = match exprs.remove(0) {
+                                    Ast::Symbol(_, sym) => (sym, vec![], vec![]),
+                                    Ast::SExpr(_, mut vals) if vals.len() > 1 => {
+                                        let name = match vals.remove(0) {
+                                            Ast::Symbol(_, sym) => sym,
+                                            _ => return Err(IrParseError::InvalidTypeDef),
+                                        };
+
+                                        let mut generics = vec![];
+                                        let mut lifetimes = vec![];
+                                        for v in vals {
+                                            match v {
+                                                Ast::Symbol(_, generic) => generics.push(generic),
+                                                Ast::Lifetime(_, lifetime) => lifetimes.push(lifetime),
+                                                _ => return Err(IrParseError::InvalidTypeDef),
+                                            }
+                                        }
+
+                                        (name, generics, lifetimes)
+                                    }
+
+                                    _ => return Err(IrParseError::InvalidTypeDef),
+                                };
+
+                                let type_ = match types::parse_type(exprs.remove(0), &generics.iter().collect()) {
+                                    Ok(v) => v,
+                                    Err(e) => return Err(IrParseError::TypeParseError(e)),
+                                };
+
+                                Ok(SExpr::TypeDefinition(SExprMetadata::new(span), name, generics, lifetimes, type_))
+                            }
+                        }
+
+                        "seq" => Ok(SExpr::Seq(SExprMetadata::new(span), parse_exprs(exprs, ir, module)?)),
 
                         _ => Ok(SExpr::Application(SExprMetadata::new(span), Box::new(SExpr::Symbol(SExprMetadata::new(f_span), sym)), parse_exprs(exprs, ir, module)?))
                     }
