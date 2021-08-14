@@ -69,38 +69,31 @@
             (set index (- (. self length) index)))
         (if (ord 0 index (. self length))
             (* (+ (. self values) index))
-        else
-            (throw (OutOfBounds index (. self length))))))
+        else (throw (OutOfBounds index (. self length))))))
 
 (fn (new T) (vals (... T)) (Vec T)
     (seq
         (let mut vec (Vec 0 0 null))
-        (for (val (iter vals)
-            (push vec val)))
+        (for val (iter vals)
+            (push vec val))
         vec))
-
-(macro varargs (a b (... c)) (a b c))
-
-(macro quotes (a (quote x) b) (* a b))
-
-(macro for
-    ((i iterator)
-        stats)
-    (seq
-        (let mut iter iterator)
-        (loop
-            (iflet v (next iter)
-                stats
-            (on IterEnd break)))))
 
 (fn main
     (seq
         (let mut (vec (Vec usize)) (new 10 20 30 40))
-        (for (v (iter vec))
+        (for v (iter vec)
             (println v))
-        (quotes 1 x 2)
-        (varargs 1 2 3)
-        (varargs 1 2 3 4 5)
-        (varargs 1 2)))
+        (if let v (throw 3)
+            (println "no")
+            (x (throw x)))
+        (json
+            \\ {
+            \\     "owo": [1, 2, 3],
+            \\     "uwu": {
+            \\         "nya": nil,
+            \\         ":3": "x"
+            \\     }
+            \\ }
+        )))
 
 )

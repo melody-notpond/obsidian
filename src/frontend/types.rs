@@ -8,6 +8,7 @@ pub enum Type {
     Unknown(usize),
 
     Nil,
+    Bool,
 
     UnassignedInt,
     UnknownInt(usize),
@@ -34,6 +35,7 @@ pub enum Type {
     Generic(String),
     TypeName(String, Vec<Type>, Vec<String>),
     Tuple(Vec<Type>),
+    VarArgs(Option<Box<Type>>),
 }
 
 pub enum TypeParseError {
@@ -43,9 +45,10 @@ pub enum TypeParseError {
     InvalidReference,
     InvalidPointer,
     InvalidTuple,
+    InvalidVarArgs,
 }
 
-pub fn parse_type(ast: Ast, generics_set: &HashSet<String>) -> Result<Type, TypeParseError> {
+pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, TypeParseError> {
     match ast {
         Ast::Int(_, _)
         | Ast::Float(_, _)
@@ -67,11 +70,14 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<String>) -> Result<Type, Type
                 "u16" => Ok(Type::U16),
                 "u32" => Ok(Type::U32),
                 "u64" => Ok(Type::U64),
+                "bool" => Ok(Type::Bool),
 
                 "f32" => Ok(Type::F32),
                 "f64" => Ok(Type::F64),
 
                 "nil" => Ok(Type::Nil),
+
+                "..." => Ok(Type::VarArgs(None)),
 
                 _ => Ok(Type::TypeName(sym, vec![], vec![]))
             }
@@ -92,6 +98,7 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<String>) -> Result<Type, Type
                           "i8" | "i16" | "i32" | "i64"
                         | "u8" | "u16" | "u32" | "u64"
                                        | "f32" | "f64"
+                        | "bool"
                         => Err(TypeParseError::DoesNotTakeGenerics),
 
                         "&" => {
@@ -135,6 +142,14 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<String>) -> Result<Type, Type
                                 Ok(Type::Tuple(generics))
                             } else {
                                 Err(TypeParseError::InvalidTuple)
+                            }
+                        }
+
+                        "..." => {
+                            if generics.len() == 1 && lifetimes.is_empty() {
+                                Ok(Type::VarArgs(Some(Box::new(generics.swap_remove(0)))))
+                            } else {
+                                Err(TypeParseError::InvalidVarArgs)
                             }
                         }
 

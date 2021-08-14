@@ -29,6 +29,19 @@ fn convert_chars(s: &str, off: usize) -> String {
     s
 }
 
+fn strip_initial_backslashes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+
+    for line in s.split('\n') {
+        if let Some(stripped) = line.strip_prefix("\\\\") {
+            result.push_str(stripped);
+            result.push('\n');
+        }
+    }
+
+    result
+}
+
 // The tokens parsed by the lexer.
 #[derive(Logos, PartialEq, Debug, Clone)]
 pub enum Token {
@@ -87,6 +100,7 @@ pub enum Token {
     // Strings
     #[regex(r#""([^\\"]|\\.)*""#, |lex| convert_chars(lex.slice(), 1))]
     #[regex(r##"#"([^"]|"[^#])*"#"##, |lex| convert_chars(lex.slice(), 2))]
+    #[regex(r"(\\\\[^\n]*\n)+", |lex| strip_initial_backslashes(lex.slice()))]
     String(String),
 
     // Booleans
