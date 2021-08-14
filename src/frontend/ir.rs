@@ -630,41 +630,6 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                             }
                         }
 
-                        "while" => {
-                            if exprs.len() == 2 {
-                                let body = parse_ir_helper(exprs.remove(1), ir, module)?;
-                                let cond = parse_ir_helper(exprs.remove(0), ir, module)?;
-                                Ok(SExpr::Loop(SExprMetadata::new(span.clone()), None, Box::new(
-                                    SExpr::If(SExprMetadata::new(span.clone()), Box::new(cond), Box::new(body), Some(Box::new(SExpr::Break(SExprMetadata::new(span), None))))
-                                )))
-                            } else {
-                                Err(IrParseError::InvalidLoopArgs)
-                            }
-                        }
-
-                        "for" => {
-                            if exprs.len() == 3 {
-                                let body = parse_ir_helper(exprs.remove(2), ir, module)?;
-                                let iter = parse_ir_helper(exprs.remove(1), ir, module)?;
-                                let pattern = parse_pattern(exprs.remove(0))?;
-                                Ok(SExpr::Loop(SExprMetadata::new(span.clone()), Some(
-                                    (Pattern::MutName(String::from("iter")), Box::new(iter))
-                                ), Box::new(SExpr::Guard(SExprMetadata::new(span.clone()),
-                                    pattern,
-                                    Box::new(SExpr::Application(SExprMetadata::new(span.clone()),
-                                        Box::new(SExpr::Symbol(SExprMetadata::new(span.clone()), String::from("next"))),
-                                        vec![
-                                            SExpr::Symbol(SExprMetadata::new(span.clone()), String::from("iter"))
-                                        ])
-                                    ),
-                                    Box::new(body),
-                                    vec![(Pattern::Struct(String::from("IterEnd"), HashMap::new()), SExpr::Break(SExprMetadata::new(span), None))]
-                                ))))
-                            } else {
-                                Err(IrParseError::InvalidLoopArgs)
-                            }
-                        }
-
                         "fn" => {
                             if exprs.len() < 2 {
                                 return Err(IrParseError::InvalidFunctionValue);

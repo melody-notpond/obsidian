@@ -1,3 +1,4 @@
+{
 (struct (Vec T)
     (length usize)
     (capacity usize)
@@ -74,18 +75,28 @@
             (push vec val))
         vec))
 
-(seq
-    (let (mut iter) name (iter i))
-    (loop v (next iter)
-        (seq
-            (println "{}" v)
-            (continue (next iter)))))
+}
+
+(macro for
+    (v i s) (seq
+        (let (mut iter) i)
+        (loop v (next iter)
+            (seq
+                s
+                (continue (next iter))))))
+
+(macro while
+    (con stats) (loop
+        (if con
+            stats
+        else break)))
 
 (fn main
     (seq
         (let (mut vec) (new 10 20 30 40))
         (for v (iter vec)
             (println v))
+        (while true (println "uwu"))
         (json
             \\ {
             \\     "owo": [1, 2, 3],
