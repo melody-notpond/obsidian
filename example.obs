@@ -1,8 +1,3 @@
-(namespace (an example module)
-
-(use (some example import) as ex)
-(use (some example import) (MyExampleThing MyOtherExampleThing))
-
 (struct (Vec T)
     (length usize)
     (capacity usize)
@@ -13,7 +8,7 @@
     (end usize)
     (vec (& 'a (Vec T))))
 
-(fn (slice T 'a) ((vec (& 'a (Vec T))) (start usize) (end usize))
+(fn (slice T 'a) (vec (& 'a (Vec T))) (start usize) (end usize)
     (VecSlice
         start
         end
@@ -41,7 +36,7 @@
     (bound usize))
 
 (fn (next T 'a) (self (& (VecIter T 'a))) (& T)
-    (with v (get ((. self vec) (. self index)))
+    (with v (get (. self vec) (. self index))
         v
     (on (OutOfBounds _ _)
         (throw IterEnd))))
@@ -55,16 +50,17 @@
     (second U))
 
 (fn (next T U) (self (& (Enumerate T))) (Pair usize U)
-    (Pair (++ (. self index)) (next (. self iter))))
+    (Pair (+= (. self index) 1) (next (. self iter))))
 
-(fn (push T) ((self (&mut (Vec T)) (value T)))
+(fn (push T) (self (&mut (Vec T))) (value T) ()
     (seq
         (if (>= (. self length) (. self capacity))
             (realloc (&mut (. self values)) (*= (. self capacity) 2)))
-        (set (* (+ (. self values) (++ (. self length)))) value)))
+        (set (+ (. self values) (+= (. self length) 1)) value)))
 
-(fn (get T) ((self (& (Vec T))) (index (mut isize))) (& T)
+(fn (get T) (self (& (Vec T))) (index isize) (& T)
     (seq
+        (let (mut index) index)
         (if (< index 0)
             (set index (- (. self length) index)))
         (if (ord 0 index (. self length))
@@ -73,19 +69,23 @@
 
 (fn (new T) (vals (... T)) (Vec T)
     (seq
-        (let mut vec (Vec 0 0 null))
+        (let (mut vec) (Vec 0 0 null))
         (for val (iter vals)
             (push vec val))
         vec))
 
+(seq
+    (let (mut iter) name (iter i))
+    (loop v (next iter)
+        (seq
+            (println "{}" v)
+            (continue (next iter)))))
+
 (fn main
     (seq
-        (let mut (vec (Vec usize)) (new 10 20 30 40))
+        (let (mut vec) (new 10 20 30 40))
         (for v (iter vec)
             (println v))
-        (if let v (throw 3)
-            (println "no")
-            (x (throw x)))
         (json
             \\ {
             \\     "owo": [1, 2, 3],
@@ -96,4 +96,3 @@
             \\ }
         )))
 
-)

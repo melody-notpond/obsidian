@@ -33,7 +33,7 @@ fn strip_initial_backslashes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
 
     for line in s.split('\n') {
-        if let Some(stripped) = line.strip_prefix("\\\\") {
+        if let Some(stripped) = line.trim_start().strip_prefix("\\\\") {
             result.push_str(stripped);
             result.push('\n');
         }
@@ -100,7 +100,7 @@ pub enum Token {
     // Strings
     #[regex(r#""([^\\"]|\\.)*""#, |lex| convert_chars(lex.slice(), 1))]
     #[regex(r##"#"([^"]|"[^#])*"#"##, |lex| convert_chars(lex.slice(), 2))]
-    #[regex(r"(\\\\[^\n]*\n)+", |lex| strip_initial_backslashes(lex.slice()))]
+    #[regex(r"([\t ]*\\\\[^\n]*[\r\n]+)+", |lex| strip_initial_backslashes(lex.slice()))]
     String(String),
 
     // Booleans

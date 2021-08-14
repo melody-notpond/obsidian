@@ -16,10 +16,12 @@ pub enum Type {
     I16,
     I32,
     I64,
+    ISize,
     U8,
     U16,
     U32,
     U64,
+    USize,
 
     UnassignedFloat,
     UnknownFloat(usize),
@@ -67,10 +69,12 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
                 "i16" => Ok(Type::I16),
                 "i32" => Ok(Type::I32),
                 "i64" => Ok(Type::I64),
+                "isize" => Ok(Type::ISize),
                 "u8" => Ok(Type::U8),
                 "u16" => Ok(Type::U16),
                 "u32" => Ok(Type::U32),
                 "u64" => Ok(Type::U64),
+                "usize" => Ok(Type::USize),
                 "bool" => Ok(Type::Bool),
 
                 "f32" => Ok(Type::F32),
@@ -80,6 +84,7 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
 
                 "..." => Ok(Type::VarArgs(None)),
 
+                _ if generics_set.contains(&sym) => Ok(Type::Generic(sym)),
                 _ => Ok(Type::TypeName(sym, vec![], vec![]))
             }
         }
@@ -99,7 +104,7 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
                           "i8" | "i16" | "i32" | "i64"
                         | "u8" | "u16" | "u32" | "u64"
                                        | "f32" | "f64"
-                        | "bool"
+                        | "bool" | "isize" | "usize"
                         => Err(TypeParseError::DoesNotTakeGenerics),
 
                         "&" => {

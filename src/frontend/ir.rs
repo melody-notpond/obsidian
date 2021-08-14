@@ -5,7 +5,7 @@ use super::types::{self, Type, TypeParseError};
 use super::parser::Ast;
 
 #[derive(Clone, Debug)]
-pub enum NativeFunction {
+pub enum NativeOperation {
     Add,
     Sub,
     Mul,
@@ -81,6 +81,7 @@ pub enum IrParseError {
     InvalidEnum,
     InvalidEnumVariant,
     InvalidTypeDef,
+    InvalidAttribute,
 }
 
 #[derive(Clone, Debug)]
@@ -110,7 +111,7 @@ fn parse_pattern(ast: Ast) -> Result<Pattern, IrParseError> {
                 Ast::Symbol(_, sym) => {
                     match sym.as_str() {
                         "mut" => {
-                            if sexpr.len() == 1 && matches!(&sexpr[1], Ast::Symbol(_, _)){
+                            if sexpr.len() == 2 && matches!(&sexpr[1], Ast::Symbol(_, _)){
                                 if let Ast::Symbol(_, sym) = sexpr.remove(1)  {
                                     Ok(Pattern::MutName(sym))
                                 } else {
@@ -130,7 +131,7 @@ fn parse_pattern(ast: Ast) -> Result<Pattern, IrParseError> {
                         )),
 
                         "enum" => {
-                            if sexpr.len() == 1 && matches!(&sexpr[1], Ast::Symbol(_, _)){
+                            if sexpr.len() == 2 && matches!(&sexpr[1], Ast::Symbol(_, _)){
                                 if let Ast::Symbol(_, sym) = sexpr.remove(1)  {
                                     Ok(Pattern::Enum(sym))
                                 } else {
@@ -223,7 +224,7 @@ pub enum SExpr {
     Lifetime(SExprMetadata, String),
 
     // Native functions
-    Native(SExprMetadata, NativeFunction, Vec<SExpr>),
+    Native(SExprMetadata, NativeOperation, Vec<SExpr>),
 
     // Nil
     Nil(SExprMetadata),
@@ -250,14 +251,14 @@ pub enum SExpr {
     // If expressions
     If(SExprMetadata, Box<SExpr>, Box<SExpr>, Option<Box<SExpr>>),
 
-    // If let expressions
-    IfLet(SExprMetadata, Pattern, Box<SExpr>, Box<SExpr>, Vec<(Pattern, SExpr)>),
+    // Guard expressions
+    Guard(SExprMetadata, Pattern, Box<SExpr>, Box<SExpr>, Vec<(Pattern, SExpr)>),
 
     // Match expression
     Match(SExprMetadata, Vec<(Pattern, SExpr)>, Option<Box<SExpr>>),
 
     // Loop expression
-    Loop(SExprMetadata, Option<Box<SExpr>>, Box<SExpr>),
+    Loop(SExprMetadata, Option<(Pattern, Box<SExpr>)>, Box<SExpr>),
 
     // Functions
     //       metadata       name    generics     lifetimes    arguments            return type  body
@@ -266,8 +267,11 @@ pub enum SExpr {
     // Let expressions
     Let(SExprMetadata, Pattern, Type, Box<SExpr>),
 
-    // Assignment
-    Assign(SExprMetadata, Pattern, Box<SExpr>),
+    // Assignments
+    Assign(SExprMetadata, Box<SExpr>, Option<NativeOperation>, Box<SExpr>),
+
+    // Attributes
+    Attribute(SExprMetadata, Vec<String>),
 
     // Structs
     //     metadata       name    generics     lifetimes    fields
@@ -309,12 +313,13 @@ impl SExpr {
             | SExpr::Throw(m, _)
             | SExpr::Unreachable(m)
             | SExpr::If(m, _, _, _)
-            | SExpr::IfLet(m, _, _, _, _)
+            | SExpr::Guard(m, _, _, _, _)
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
             | SExpr::Function(m, _, _, _, _, _, _)
             | SExpr::Let(m, _, _, _)
-            | SExpr::Assign(m, _, _)
+            | SExpr::Assign(m, _, _, _)
+            | SExpr::Attribute(m, _)
             | SExpr::Struct(m, _, _, _, _)
             | SExpr::Enum(m, _, _, _)
             | SExpr::Tuple(m, _)
@@ -345,12 +350,13 @@ impl SExpr {
             | SExpr::Throw(m, _)
             | SExpr::Unreachable(m)
             | SExpr::If(m, _, _, _)
-            | SExpr::IfLet(m, _, _, _, _)
+            | SExpr::Guard(m, _, _, _, _)
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
             | SExpr::Function(m, _, _, _, _, _, _)
             | SExpr::Let(m, _, _, _)
-            | SExpr::Assign(m, _, _)
+            | SExpr::Assign(m, _, _, _)
+            | SExpr::Attribute(m, _)
             | SExpr::Struct(m, _, _, _, _)
             | SExpr::Enum(m, _, _, _)
             | SExpr::Tuple(m, _)
@@ -360,12 +366,14 @@ impl SExpr {
     }
 }
 
+#[derive(Debug)]
 pub struct IrModule {
     pub root: SExpr,
     pub types: HashMap<String, SExpr>,
     pub funcs: HashMap<String, SExpr>,
 }
 
+#[derive(Debug)]
 pub struct Ir {
     pub modules: HashMap<Vec<String>, IrModule>,
 }
@@ -412,14 +420,14 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                 Ast::Symbol(f_span, sym) => {
                     match sym.as_str() {
                         // Native operators (and also ref/deref)
-                        "+" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Add, parse_exprs(exprs, ir, module)?)),
-                        "-" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Sub, parse_exprs(exprs, ir, module)?)),
+                        "+" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Add, parse_exprs(exprs, ir, module)?)),
+                        "-" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Sub, parse_exprs(exprs, ir, module)?)),
                         "*" if exprs.len() == 1 => Ok(SExpr::Deref(SExprMetadata::new(span), Box::new(parse_ir_helper(exprs.remove(0), ir, module)?))),
-                        "*" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Mul, parse_exprs(exprs, ir, module)?)),
-                        "/" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Div, parse_exprs(exprs, ir, module)?)),
-                        "%" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Mod, parse_exprs(exprs, ir, module)?)),
-                        "<<" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Bsl, parse_exprs(exprs, ir, module)?)),
-                        ">>" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Bsr, parse_exprs(exprs, ir, module)?)),
+                        "*" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Mul, parse_exprs(exprs, ir, module)?)),
+                        "/" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Div, parse_exprs(exprs, ir, module)?)),
+                        "%" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Mod, parse_exprs(exprs, ir, module)?)),
+                        "<<" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Bsl, parse_exprs(exprs, ir, module)?)),
+                        ">>" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Bsr, parse_exprs(exprs, ir, module)?)),
                         "&" if exprs.len() == 1 => Ok(SExpr::Ref(SExprMetadata::new(span), Box::new(parse_ir_helper(exprs.remove(0), ir, module)?))),
 
                         "&mut" => {
@@ -430,18 +438,18 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                             }
                         }
 
-                        "&" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::BitAnd, parse_exprs(exprs, ir, module)?)),
-                        "|" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::BitOr, parse_exprs(exprs, ir, module)?)),
-                        "^" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::BitXor, parse_exprs(exprs, ir, module)?)),
-                        "and" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::BoolAnd, parse_exprs(exprs, ir, module)?)),
-                        "or" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::BoolOr, parse_exprs(exprs, ir, module)?)),
-                        "xor" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::BoolXor, parse_exprs(exprs, ir, module)?)),
-                        "<" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Lt, parse_exprs(exprs, ir, module)?)),
-                        ">" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Gt, parse_exprs(exprs, ir, module)?)),
-                        "<=" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Lte, parse_exprs(exprs, ir, module)?)),
-                        ">=" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Gte, parse_exprs(exprs, ir, module)?)),
-                        "==" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Eq, parse_exprs(exprs, ir, module)?)),
-                        "!=" => Ok(SExpr::Native(SExprMetadata::new(span), NativeFunction::Ne, parse_exprs(exprs, ir, module)?)),
+                        "&" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::BitAnd, parse_exprs(exprs, ir, module)?)),
+                        "|" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::BitOr, parse_exprs(exprs, ir, module)?)),
+                        "^" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::BitXor, parse_exprs(exprs, ir, module)?)),
+                        "and" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::BoolAnd, parse_exprs(exprs, ir, module)?)),
+                        "or" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::BoolOr, parse_exprs(exprs, ir, module)?)),
+                        "xor" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::BoolXor, parse_exprs(exprs, ir, module)?)),
+                        "<" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Lt, parse_exprs(exprs, ir, module)?)),
+                        ">" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Gt, parse_exprs(exprs, ir, module)?)),
+                        "<=" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Lte, parse_exprs(exprs, ir, module)?)),
+                        ">=" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Gte, parse_exprs(exprs, ir, module)?)),
+                        "==" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Eq, parse_exprs(exprs, ir, module)?)),
+                        "!=" => Ok(SExpr::Native(SExprMetadata::new(span), NativeOperation::Ne, parse_exprs(exprs, ir, module)?)),
 
                         // Control flow keywords
                         "continue" => {
@@ -503,40 +511,6 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                         "if" => {
                             let mut exprs = exprs.into_iter();
                             match exprs.next() {
-                                Some(Ast::Symbol(_, s)) if s == "let" => {
-                                    let pattern = match exprs.next() {
-                                        Some(v) => parse_pattern(v)?,
-                                        None => return Err(IrParseError::MissingIfClauses),
-                                    };
-
-                                    let assign = match exprs.next() {
-                                        Some(v) => parse_ir_helper(v, ir, module)?,
-                                        None => return Err(IrParseError::MissingIfClauses),
-                                    };
-
-                                    let body = match exprs.next() {
-                                        Some(v) => parse_ir_helper(v, ir, module)?,
-                                        None => return Err(IrParseError::MissingIfClauses),
-                                    };
-
-                                    let mut vec = vec![];
-                                    for v in exprs {
-                                        if let Ast::SExpr(_, mut vals) = v {
-                                            if vals.len() == 2 {
-                                                let expr = parse_ir_helper(vals.remove(1), ir, module)?;
-                                                let pattern = parse_pattern(vals.remove(0))?;
-                                                vec.push((pattern, expr));
-                                            } else {
-                                                return Err(IrParseError::MissingIfClauses);
-                                            }
-                                        } else {
-                                            return Err(IrParseError::MissingIfClauses);
-                                        }
-                                    }
-
-                                    Ok(SExpr::IfLet(SExprMetadata::new(span), pattern, Box::new(assign), Box::new(body), vec))
-                                }
-
                                 Some(v) => {
                                     let cond = parse_ir_helper(v, ir, module)?;
                                     let body = match exprs.next() {
@@ -646,10 +620,11 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                         "loop" => {
                             if exprs.len() == 1 {
                                 Ok(SExpr::Loop(SExprMetadata::new(span), None, Box::new(parse_ir_helper(exprs.remove(0), ir, module)?)))
-                            } else if exprs.len() == 2 {
-                                let body = parse_ir_helper(exprs.remove(1), ir, module)?;
-                                let cont = parse_ir_helper(exprs.remove(0), ir, module)?;
-                                Ok(SExpr::Loop(SExprMetadata::new(span), Some(Box::new(cont)), Box::new(body)))
+                            } else if exprs.len() == 3 {
+                                let body = parse_ir_helper(exprs.remove(2), ir, module)?;
+                                let cont = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let pattern = parse_pattern(exprs.remove(0))?;
+                                Ok(SExpr::Loop(SExprMetadata::new(span), Some((pattern, Box::new(cont))), Box::new(body)))
                             } else {
                                 Err(IrParseError::InvalidLoopArgs)
                             }
@@ -672,9 +647,9 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                                 let body = parse_ir_helper(exprs.remove(2), ir, module)?;
                                 let iter = parse_ir_helper(exprs.remove(1), ir, module)?;
                                 let pattern = parse_pattern(exprs.remove(0))?;
-                                Ok(SExpr::Loop(SExprMetadata::new(span.clone()), Some(Box::new(
-                                    SExpr::Let(SExprMetadata::new(span.clone()), Pattern::MutName(String::from("iter")), Type::Unassigned, Box::new(iter))
-                                )), Box::new(SExpr::IfLet(SExprMetadata::new(span.clone()),
+                                Ok(SExpr::Loop(SExprMetadata::new(span.clone()), Some(
+                                    (Pattern::MutName(String::from("iter")), Box::new(iter))
+                                ), Box::new(SExpr::Guard(SExprMetadata::new(span.clone()),
                                     pattern,
                                     Box::new(SExpr::Application(SExprMetadata::new(span.clone()),
                                         Box::new(SExpr::Symbol(SExprMetadata::new(span.clone()), String::from("next"))),
@@ -780,13 +755,126 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
                             }
                         }
 
-                        "set" => {
+                        "=" => {
                             if exprs.len() == 2 {
                                 let value = parse_ir_helper(exprs.remove(1), ir, module)?;
-                                let pattern = parse_pattern(exprs.remove(0))?;
-                                Ok(SExpr::Assign(SExprMetadata::new(span), pattern, Box::new(value)))
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), None, Box::new(value)))
                             } else {
                                 Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "+=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::Add), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "-=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::Sub), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "*=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::Mul), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "/=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::Div), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "%=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::Mod), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "<<=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::Bsl), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        ">>=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::Bsr), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "&=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::BitAnd), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "|=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::BitOr), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "^=" => {
+                            if exprs.len() == 2 {
+                                let value = parse_ir_helper(exprs.remove(1), ir, module)?;
+                                let var = parse_ir_helper(exprs.remove(0), ir, module)?;
+                                Ok(SExpr::Assign(SExprMetadata::new(span), Box::new(var), Some(NativeOperation::BitXor), Box::new(value)))
+                            } else {
+                                Err(IrParseError::InvalidAssign)
+                            }
+                        }
+
+                        "." => {
+                            if exprs.len() >= 2 {
+                                let exprs = exprs.into_iter().map(|v| if let Ast::Symbol(_, sym) = v {
+                                    Ok(sym)
+                                } else {
+                                    Err(IrParseError::InvalidAttribute)
+                                }).collect::<Result<Vec<_>, _>>()?;
+                                Ok(SExpr::Attribute(SExprMetadata::new(span), exprs))
+                            } else {
+                                Err(IrParseError::InvalidAttribute)
                             }
                         }
 
@@ -945,7 +1033,7 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
 
 pub fn parse_ir(ast: Ast) -> Result<Ir, IrParseError> {
     match ast {
-        Ast::Program(_, exprs) => {
+        Ast::Program(span, exprs) => {
             let mut ir = Ir {
                 modules: HashMap::new()
             };
@@ -956,9 +1044,11 @@ pub fn parse_ir(ast: Ast) -> Result<Ir, IrParseError> {
                 funcs: HashMap::new(),
             };
 
+            let mut seq = vec![];
             for expr in exprs {
-                parse_ir_helper(expr, &mut ir, &mut module)?;
+                seq.push(parse_ir_helper(expr, &mut ir, &mut module)?);
             }
+            module.root = SExpr::Seq(SExprMetadata::new(span), seq);
 
             ir.modules.insert(vec![], module);
             Ok(ir)
