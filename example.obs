@@ -1,4 +1,3 @@
-{
 (struct (Vec T)
     (length usize)
     (capacity usize)
@@ -75,7 +74,6 @@
             (push vec val))
         vec))
 
-}
 
 (macro for
     (v i s) (seq
