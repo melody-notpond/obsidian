@@ -89,7 +89,11 @@
     (con stats) (loop
         (if con
             stats
-        else break)))
+        else break))
+    (con stats (quote else) elsy) (loop
+        (if con
+            stats
+        else (break elsy))))
 
 (fn main
     (seq
@@ -106,13 +110,7 @@
             (do stuff))
         (while true
             (println "uwu"))
-        (json
-            \\ {
-            \\     "owo": [1, 2, 3],
-            \\     "uwu": {
-            \\         "nya": nil,
-            \\         ":3": "x"
-            \\     }
-            \\ }
-        )))
+        (while true
+            (println "uwu")
+        else false)))
 
