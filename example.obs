@@ -96,7 +96,16 @@
         (let (mut vec) (new 10 20 30 40))
         (for v (iter vec)
             (println v))
-        (while true (println "uwu"))
+        (try
+            (stuff)
+        catch (IterEnd)
+            (do stuff)
+        catch (Overflow)
+            (do stuff)
+        catch _
+            (do stuff))
+        (while true
+            (println "uwu"))
         (json
             \\ {
             \\     "owo": [1, 2, 3],

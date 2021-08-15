@@ -82,6 +82,7 @@ pub enum IrParseError {
     InvalidEnumVariant,
     InvalidTypeDef,
     InvalidAttribute,
+    MissingTryClauses,
 }
 
 #[derive(Clone, Debug)]
@@ -251,8 +252,8 @@ pub enum SExpr {
     // If expressions
     If(SExprMetadata, Box<SExpr>, Box<SExpr>, Option<Box<SExpr>>),
 
-    // Guard expressions
-    Guard(SExprMetadata, Pattern, Box<SExpr>, Box<SExpr>, Vec<(Pattern, SExpr)>),
+    // Try expressions
+    Try(SExprMetadata, Box<SExpr>, Vec<(Pattern, SExpr)>),
 
     // Match expression
     Match(SExprMetadata, Vec<(Pattern, SExpr)>, Option<Box<SExpr>>),
@@ -313,7 +314,7 @@ impl SExpr {
             | SExpr::Throw(m, _)
             | SExpr::Unreachable(m)
             | SExpr::If(m, _, _, _)
-            | SExpr::Guard(m, _, _, _, _)
+            | SExpr::Try(m, _, _)
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
             | SExpr::Function(m, _, _, _, _, _, _)
@@ -350,7 +351,7 @@ impl SExpr {
             | SExpr::Throw(m, _)
             | SExpr::Unreachable(m)
             | SExpr::If(m, _, _, _)
-            | SExpr::Guard(m, _, _, _, _)
+            | SExpr::Try(m, _, _)
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
             | SExpr::Function(m, _, _, _, _, _, _)
@@ -585,6 +586,46 @@ fn parse_ir_helper(ast: Ast, ir: &mut Ir, module: &mut IrModule) -> Result<SExpr
 
                             result.get_mut_metadata().span.start = span.start;
                             Ok(result)
+                        }
+
+                        "try" => {
+                            if exprs.len() > 1 {
+                                let body = parse_ir_helper(exprs.remove(0), ir, module)?;
+
+                                enum State {
+                                    Catch,
+                                    Pattern,
+                                    Statement
+                                }
+                                let mut state = State::Catch;
+                                let mut pairs = vec![];
+                                for expr in exprs {
+                                    match state {
+                                        State::Catch => {
+                                            state = State::Pattern;
+                                        }
+
+                                        State::Pattern => {
+                                            pairs.push((parse_pattern(expr)?, None));
+                                            state = State::Statement;
+                                        }
+
+                                        State::Statement => {
+                                            pairs.last_mut().unwrap().1 = Some(parse_ir_helper(expr, ir, module)?);
+                                            state = State::Catch;
+                                        }
+                                    }
+                                }
+
+                                if !matches!(state, State::Catch) {
+                                    Err(IrParseError::MissingTryClauses)
+                                } else {
+                                    let pairs = pairs.into_iter().map(|v| (v.0, v.1.unwrap())).collect();
+                                    Ok(SExpr::Try(SExprMetadata::new(span), Box::new(body), pairs))
+                                }
+                            } else {
+                                Err(IrParseError::MissingTryClauses)
+                            }
                         }
 
                         "match" => {
