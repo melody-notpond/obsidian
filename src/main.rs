@@ -1,9 +1,9 @@
 use std::fs;
 use std::collections::HashMap;
 
-use obsidian::frontends::macros;
-use obsidian::frontends::parser;
-use obsidian::frontends::ir;
+use obsidian::frontends::lispy::macros;
+use obsidian::frontends::lispy::parser;
+use obsidian::frontends::lispy::ir;
 
 fn main() {
     let contents = fs::read_to_string("example.obs").unwrap();

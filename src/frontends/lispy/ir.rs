@@ -1,8 +1,8 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
 
-use super::super::middleend::ir::{IrModule, SExpr, SExprMetadata, Pattern, NativeOperation};
-use super::super::middleend::types::Type;
+use super::super::super::middleend::ir::{IrModule, SExpr, SExprMetadata, Pattern, NativeOperation};
+use super::super::super::middleend::types::Type;
 use super::types::{self, TypeParseError};
 use super::parser::Ast;
 

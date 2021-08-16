@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::parser::Ast;
-use super::super::middleend::types::Type;
+use super::super::super::middleend::types::Type;
 
 #[derive(Debug, Clone)]
 pub enum TypeParseError {
