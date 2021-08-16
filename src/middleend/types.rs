@@ -1,4 +1,6 @@
-#[derive(Clone, Debug)]
+pub mod checker;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     Unassigned,
     Unknown(usize),

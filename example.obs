@@ -1,3 +1,4 @@
+{
 (struct (Vec T)
     (length usize)
     (capacity usize)
@@ -74,6 +75,11 @@
             (push vec val))
         vec))
 
+(fn (drop T) (vec (Vec T)) ()
+    (seq
+        (for v (iter vec)
+            (drop v))
+        (dealloc (. vec values))))
 
 (macro for
     (v i s) (seq
@@ -96,6 +102,7 @@
 (fn main
     (seq
         (let (mut vec) (new 10 20 30 40))
+        (defer (drop vec))
         (for v (iter vec)
             (println v))
         (try
@@ -111,4 +118,10 @@
         (while true
             (println "uwu")
         else false)))
+}
 
+(seq
+    (defer y)
+    (defer x)
+    (do things)
+    (do more things))

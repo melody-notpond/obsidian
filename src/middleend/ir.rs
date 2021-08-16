@@ -90,7 +90,7 @@ pub enum SExpr {
     // Lifetime
     Lifetime(SExprMetadata, String),
 
-    // Native functions
+    // Native operations
     Native(SExprMetadata, NativeOperation, Vec<SExpr>),
 
     // Nil
@@ -233,14 +233,13 @@ impl SExpr {
     }
 }
 
-#[derive(Debug)]
-pub struct IrModule {
-    pub root: SExpr,
-    pub types: HashMap<String, SExpr>,
-    pub funcs: HashMap<String, SExpr>,
-}
+
+//                         name         arg types          return type
+pub type FuncMap = HashMap<String, Vec<(Vec<Type>, HashMap<Type, SExpr>)>>;
 
 #[derive(Debug)]
-pub struct Ir {
-    pub modules: HashMap<Vec<String>, IrModule>,
+pub struct IrModule {
+    pub sexprs: Vec<SExpr>,
+    pub types: HashMap<String, SExpr>,
+    pub funcs: FuncMap,
 }
