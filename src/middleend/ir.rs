@@ -87,9 +87,6 @@ pub enum SExpr {
     // Symbol (variables and stuff)
     Symbol(SExprMetadata, String),
 
-    // Lifetime
-    Lifetime(SExprMetadata, String),
-
     // Native operations
     Native(SExprMetadata, NativeOperation, Vec<SExpr>),
 
@@ -167,7 +164,6 @@ impl SExpr {
             | SExpr::Bool(m, _)
             | SExpr::String(m, _)
             | SExpr::Symbol(m, _)
-            | SExpr::Lifetime(m, _)
             | SExpr::Native(m, _, _)
             | SExpr::Nil(m)
             | SExpr::Ref(m, _)
@@ -204,7 +200,6 @@ impl SExpr {
             | SExpr::Bool(m, _)
             | SExpr::String(m, _)
             | SExpr::Symbol(m, _)
-            | SExpr::Lifetime(m, _)
             | SExpr::Native(m, _, _)
             | SExpr::Nil(m)
             | SExpr::Ref(m, _)
@@ -232,7 +227,6 @@ impl SExpr {
         }
     }
 }
-
 
 //                         name         arg types          return type
 pub type FuncMap = HashMap<String, Vec<(Vec<Type>, HashMap<Type, SExpr>)>>;

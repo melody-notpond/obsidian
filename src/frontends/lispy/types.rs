@@ -48,7 +48,7 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
                 "..." => Ok(Type::VarArgs(None)),
 
                 _ if generics_set.contains(&sym) => Ok(Type::Generic(sym)),
-                _ => Ok(Type::TypeName(sym, vec![], vec![]))
+                _ => Ok(Type::TypeName(sym, vec![]))
             }
         }
 
@@ -72,9 +72,9 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
 
                         "&" => {
                             if generics.len() == 1 && lifetimes.is_empty() {
-                                Ok(Type::ConstRef(None, Box::new(generics.swap_remove(0))))
+                                Ok(Type::ConstRef(Box::new(generics.swap_remove(0))))
                             } else if generics.len() == 1 && lifetimes.len() == 1 {
-                                Ok(Type::ConstRef(Some(lifetimes.swap_remove(0)), Box::new(generics.swap_remove(0))))
+                                Ok(Type::ConstRef(Box::new(generics.swap_remove(0))))
                             } else {
                                 Err(TypeParseError::InvalidReference)
                             }
@@ -82,9 +82,9 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
 
                         "&mut" => {
                             if generics.len() == 1 && lifetimes.is_empty() {
-                                Ok(Type::MutRef(None, Box::new(generics.swap_remove(0))))
+                                Ok(Type::MutRef(Box::new(generics.swap_remove(0))))
                             } else if generics.len() == 1 && lifetimes.len() == 1 {
-                                Ok(Type::MutRef(Some(lifetimes.swap_remove(0)), Box::new(generics.swap_remove(0))))
+                                Ok(Type::MutRef(Box::new(generics.swap_remove(0))))
                             } else {
                                 Err(TypeParseError::InvalidReference)
                             }
@@ -127,7 +127,7 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
                         }
 
                         _ => {
-                            Ok(Type::TypeName(sym, generics, lifetimes))
+                            Ok(Type::TypeName(sym, generics))
                         }
                     }
                 } else {

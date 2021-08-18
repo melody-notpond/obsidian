@@ -26,14 +26,15 @@ pub enum Type {
     F32,
     F64,
 
-    ConstRef(Option<String>, Box<Type>),
-    MutRef(Option<String>, Box<Type>),
+    ConstRef(Box<Type>),
+    MutRef(Box<Type>),
 
     ConstPtr(Box<Type>),
     MutPtr(Box<Type>),
 
     Generic(String),
-    TypeName(String, Vec<Type>, Vec<String>),
+    TypeName(String, Vec<Type>),
     Tuple(Vec<Type>),
     VarArgs(Option<Box<Type>>),
+    Wildcard,
 }
