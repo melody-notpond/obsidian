@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use pom::parser::*;
 
 use super::super::super::middleend::types::Type;
@@ -17,6 +19,7 @@ pub enum Ast {
     Symbol(String),
     Infix(String, Box<Ast>, Box<Ast>),
     Tuple(Vec<Ast>),
+    StructInit(String, Vec<Ast>),
     Application(Box<Ast>, Vec<Ast>),
     Attribute(Vec<Ast>),
     Prefix(String, Box<Ast>),
@@ -25,6 +28,9 @@ pub enum Ast {
     Let(Box<Ast>, Box<Ast>),
     Block(Vec<Ast>, bool),
     Box(Vec<(String, Vec<Ast>)>),
+    FuncDef(String, Vec<(String, Type)>, Type, Box<Ast>),
+    Struct(String, HashMap<String, Type>),
+    Enum(String, Type, Vec<(String, Option<u64>)>),
 }
 
 fn space<'a>(necessary: bool) -> pom::parser::Parser<'a, u8, ()> {
@@ -110,8 +116,18 @@ fn symbol<'a>() -> Parser<'a> {
     symbol_helper(b"`1234567890-=[]\\;',./~!@#$%^&*()+{}|:\"<>? \t\r\n", b"`!@#$%^&*()-+=[]\\;',./{}|:\"<>? \t\r\n")
 }
 
+fn struct_init<'a>() -> Parser<'a> {
+    (symbol() - space(false) - sym(b'@') - space(false) - sym(b'{') - space(false) + list(call(expr), sym(b',') + space(false)) - space(false) - sym(b'}') - space(false)).map(|v| {
+        Ast::StructInit(if let Ast::Symbol(v) = v.0 {
+            v
+        } else {
+            unreachable!();
+        }, v.1)
+    })
+}
+
 fn application<'a>() -> Parser<'a> {
-    (symbol() - space(false) - sym(b'@') - space(false) - sym(b'(') + list(call(expr), sym(b',') + space(false)) - space(false) - sym(b')') - space(false)).map(|v| {
+    (symbol() - space(false) - sym(b'@') - space(false) - sym(b'(') - space(false) + list(call(expr), sym(b',') + space(false)) - space(false) - sym(b')') - space(false)).map(|v| {
         Ast::Application(Box::new(v.0), v.1)
     })
 }
@@ -139,7 +155,7 @@ fn tuple<'a>() -> Parser<'a> {
 }
 
 fn value<'a>() -> Parser<'a> {
-    float() | word() | int() | string() | boolean() | character() | attribute() | tuple()
+    float() | word() | int() | string() | boolean() | character() | struct_init() | attribute() | tuple()
 }
 
 fn prefix<'a>() -> Parser<'a> {
@@ -423,10 +439,61 @@ fn box_<'a>() -> Parser<'a> {
     })
 }
 
-fn full<'a>() -> Parser<'a> {
-    space(false) * statement() - end()
+fn func_def<'a>() -> Parser<'a> {
+    (seq(b"fn") * space(true) * symbol() - sym(b'(') - space(false) + list(symbol() - sym(b':') - space(false) + type_(), sym(b',') + space(false)) - sym(b')') - space(false) + expr()).map(|v| {
+        if let ((Ast::Symbol(name), args), body) = v {
+            let (ret_type, body) = match body {
+                Ast::TypeCast(ret_type, body) => (ret_type, body),
+                _ => (Type::Nil, Box::new(body)),
+            };
+            Ast::FuncDef(name, args.into_iter().map(|v| (if let Ast::Symbol(v) = v.0 { v } else { unreachable!(); }, v.1)).collect(), ret_type, body)
+        } else {
+            unreachable!();
+        }
+    })
 }
 
-pub fn parse(s: &str) -> pom::Result<Ast> {
+fn struct_def<'a>() -> Parser<'a> {
+    (seq(b"struct") * space(true) * symbol() - sym(b'{') - space(false) + list(symbol() - sym(b':') - space(false) + type_(), sym(b',') + space(false)) - sym(b'}') - space(false)).map(|v| {
+        if let Ast::Symbol(name) = v.0 {
+            Ast::Struct(name, v.1.into_iter().map(|v| {
+                if let Ast::Symbol(name) = v.0 {
+                    (name, v.1)
+                } else {
+                    unreachable!();
+                }
+            }).collect())
+        } else {
+            unreachable!();
+        }
+    })
+}
+
+fn enum_def<'a>() -> Parser<'a> {
+    (seq(b"enum") * space(true) * symbol() + (sym(b':') * space(false) * type_()).opt() - sym(b'{') - space(false) + list(symbol() + (sym(b'=') * space(false) * (word() | int())).opt(), sym(b',') + space(false)) - sym(b'}') - space(false)).map(|v| {
+        if let Ast::Symbol(name) = v.0.0 {
+            Ast::Enum(name, v.0.1.unwrap_or(Type::I32), v.1.into_iter().map(|v| {
+                match v {
+                    (Ast::Symbol(variant), Some(Ast::Int(i))) => (variant, Some(i as u64)),
+                    (Ast::Symbol(variant), Some(Ast::Word(w))) => (variant, Some(w)),
+                    (Ast::Symbol(variant), None) => (variant, None),
+                    _ => unreachable!(),
+                }
+            }).collect())
+        } else {
+            unreachable!();
+        }
+    })
+}
+
+fn top<'a>() -> Parser<'a> {
+    func_def() | struct_def() | enum_def()
+}
+
+fn full<'a>() -> pom::parser::Parser<'a, u8, Vec<Ast>> {
+    space(false) * top().repeat(..) - end()
+}
+
+pub fn parse(s: &str) -> pom::Result<Vec<Ast>> {
     full().parse(s.as_bytes())
 }
