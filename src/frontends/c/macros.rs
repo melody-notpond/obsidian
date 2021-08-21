@@ -58,8 +58,16 @@ impl Signature {
             }
 
             (Ast::Box(b1), Ast::Box(b2)) => {
+                if b1.len() != b2.len() {
+                    return false;
+                }
+
                 for ((name1, asts1), (name2, asts2)) in b1.iter().zip(b2.iter()) {
                     if name1 != name2 {
+                        return false;
+                    }
+
+                    if asts1.len() != asts2.len() {
                         return false;
                     }
 
