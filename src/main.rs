@@ -1,6 +1,7 @@
 use std::fs;
 
 use obsidian::frontends::c::macros;
+use obsidian::frontends::c::ir;
 
 #[macro_use]
 extern crate lalrpop_util;
@@ -15,4 +16,7 @@ fn main() {
     macros::replace_macros(&mut asts, &macros);
 
     println!("\n\n{:?}", asts);
+
+    let ir = ir::lower_ast_to_ir(asts);
+    println!("\n\n{:?}", ir);
 }

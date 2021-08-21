@@ -9,6 +9,7 @@ pub enum CorrectnessError {
 }
 
 fn collect_root_functions(root: &mut IrModule, errors: &mut Vec<CorrectnessError>) {
+    /*
     let mut funcs = vec![];
     for (i, sexpr) in root.sexprs.iter().enumerate() {
         match sexpr {
@@ -69,6 +70,7 @@ fn collect_root_functions(root: &mut IrModule, errors: &mut Vec<CorrectnessError
             root.funcs.insert(name, vec![(args, map)]);
         }
     }
+    */
 }
 
 pub fn check(root: &mut IrModule) -> Result<(), Vec<CorrectnessError>> {

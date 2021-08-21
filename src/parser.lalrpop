@@ -274,8 +274,11 @@ PatternRaw: Pattern = {
 
     <s:SymbolRaw> "{" <a:Comma<PatternStructField>> "}" => Pattern::Struct(String::from(s), a.into_iter().map(|v| (String::from(v.0), v.1)).collect()),
 
+    <a:IntRaw> => Pattern::SRange(a, a),
     <a:IntRaw> "-" <b:IntRaw> => Pattern::SRange(a, b),
+    <a:WordRaw> => Pattern::URange(a, a),
     <a:WordRaw> "-" <b:WordRaw> => Pattern::URange(a, b),
+    <a:FloatRaw> => Pattern::FRange(a, a),
     <a:FloatRaw> "-" <b:FloatRaw> => Pattern::FRange(a, b),
 };
 
@@ -309,16 +312,19 @@ Block: Ast =
         None => Ast::Block(v, false),
     };
 
-BoxIdentifier = <r#":[^`1234567890\-=\[\]\\;',\./~!@#$%^&*()+{}|:"<>?\s][^`!@#$%^&*()\-+=\[\]\\;,\./{}|:"<>?\s]*"#>;
+BoxIdentifier: &'input str =
+    <r#"[^`1234567890\-=\[\]\\;',\./~!@#$%^&*()+{}|:"<>?\s][^`!@#$%^&*()\-+=\[\]\\;,\./{}|:"<>?\s]*!"#> => &<>[..<>.len() - 1];
 
 BoxExpr: Ast = {
     <Block>,
     "(" <Expr> ")",
 }
 
-Box: Ast = {
-    <v:(<BoxIdentifier> <(<BoxExpr>)*>)+> => Ast::Box(v.into_iter().map(|v| (String::from(&v.0[1..]), v.1)).collect()),
-}
+Box: Ast =
+    <v:(<BoxIdentifier> <(<BoxExpr>)*>)> <mut vs:(<SymbolRaw> <(<BoxExpr>)*>)*> => {
+        vs.insert(0, v);
+        Ast::Box(vs.into_iter().map(|v| (String::from(v.0), v.1)).collect())
+    };
 
 Expr: Ast = {
     <Assign>,

@@ -6,6 +6,9 @@ use super::types::Type;
 
 #[derive(Clone, Debug)]
 pub enum NativeOperation {
+    Neg,
+    Invert,
+
     Add,
     Sub,
     Mul,
@@ -99,6 +102,9 @@ pub enum SExpr {
     // Function application
     Application(SExprMetadata, Box<SExpr>, Vec<SExpr>),
 
+    // Struct initialisation
+    StructInit(SExprMetadata, String, HashMap<String, SExpr>),
+
     // Control flow keywords
     Continue(SExprMetadata, Option<Box<SExpr>>),
     Break(SExprMetadata, Option<Box<SExpr>>),
@@ -119,12 +125,10 @@ pub enum SExpr {
     Loop(SExprMetadata, Option<(Pattern, Box<SExpr>)>, Box<SExpr>),
 
     // Functions
-    //       metadata       name    generics     lifetimes    arguments            return type  body
+    //       metadata       name    arguments            return type  body
     Function(
         SExprMetadata,
         String,
-        Vec<String>,
-        Vec<String>,
         Vec<(String, Type)>,
         Type,
         Box<SExpr>,
@@ -142,20 +146,18 @@ pub enum SExpr {
     ),
 
     // Attributes
-    Attribute(SExprMetadata, Vec<String>),
+    Attribute(SExprMetadata, Vec<SExpr>),
 
     // Structs
-    //     metadata       name    generics     lifetimes    fields
+    //     metadata       name    fields
     Struct(
         SExprMetadata,
         String,
-        Vec<String>,
-        Vec<String>,
         Vec<(String, Type)>,
     ),
 
     // Enums
-    Enum(SExprMetadata, String, Type, Vec<(String, Option<i64>)>),
+    Enum(SExprMetadata, String, Type, Vec<(String, Option<u64>)>),
 
     // Tuples
     Tuple(SExprMetadata, Vec<SExpr>),
@@ -183,6 +185,7 @@ impl SExpr {
             | SExpr::MutRef(m, _)
             | SExpr::Deref(m, _)
             | SExpr::Application(m, _, _)
+            | SExpr::StructInit(m, _, _)
             | SExpr::Continue(m, _)
             | SExpr::Break(m, _)
             | SExpr::Return(m, _)
@@ -192,11 +195,11 @@ impl SExpr {
             | SExpr::Try(m, _, _)
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
-            | SExpr::Function(m, _, _, _, _, _, _)
+            | SExpr::Function(m, _, _, _, _)
             | SExpr::Let(m, _, _, _)
             | SExpr::Assign(m, _, _, _)
             | SExpr::Attribute(m, _)
-            | SExpr::Struct(m, _, _, _, _)
+            | SExpr::Struct(m, _, _)
             | SExpr::Enum(m, _, _, _)
             | SExpr::Tuple(m, _)
             | SExpr::TypeDefinition(m, _, _, _, _)
@@ -219,6 +222,7 @@ impl SExpr {
             | SExpr::MutRef(m, _)
             | SExpr::Deref(m, _)
             | SExpr::Application(m, _, _)
+            | SExpr::StructInit(m, _, _)
             | SExpr::Continue(m, _)
             | SExpr::Break(m, _)
             | SExpr::Return(m, _)
@@ -228,11 +232,11 @@ impl SExpr {
             | SExpr::Try(m, _, _)
             | SExpr::Match(m, _, _)
             | SExpr::Loop(m, _, _)
-            | SExpr::Function(m, _, _, _, _, _, _)
+            | SExpr::Function(m, _, _, _, _)
             | SExpr::Let(m, _, _, _)
             | SExpr::Assign(m, _, _, _)
             | SExpr::Attribute(m, _)
-            | SExpr::Struct(m, _, _, _, _)
+            | SExpr::Struct(m, _, _)
             | SExpr::Enum(m, _, _, _)
             | SExpr::Tuple(m, _)
             | SExpr::TypeDefinition(m, _, _, _, _)
@@ -241,8 +245,8 @@ impl SExpr {
     }
 }
 
-//                         name         arg types          return type
-pub type FuncMap = HashMap<String, Vec<(Vec<Type>, HashMap<Type, SExpr>)>>;
+//                         name         arg types       return type
+pub type FuncMap = HashMap<String, Vec<(Vec<Type>, Vec<(Type, SExpr)>)>>;
 
 #[derive(Debug)]
 pub struct IrModule {
