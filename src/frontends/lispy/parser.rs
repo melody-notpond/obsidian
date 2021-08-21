@@ -376,11 +376,13 @@ fn value(parser: &mut Parser) -> Result<Ast, ParseError> {
     let slice = parser.slice();
     let (token, span) = match parser.peek() {
         Some(v) => v,
-        None => return Err(ParseError {
-            span: parser.span(),
-            msg: String::from("expected value"),
-            fatal: false,
-        }),
+        None => {
+            return Err(ParseError {
+                span: parser.span(),
+                msg: String::from("expected value"),
+                fatal: false,
+            })
+        }
     };
 
     // Check for int
@@ -450,10 +452,7 @@ fn value(parser: &mut Parser) -> Result<Ast, ParseError> {
         }
         let (_, Span { start: _, end }) = consume_save!(parser, RParen, state, true, "");
 
-        Ok(Ast::SExpr(Span {
-            start,
-            end
-        }, exprs))
+        Ok(Ast::SExpr(Span { start, end }, exprs))
 
     // Not a value
     } else {
@@ -475,10 +474,13 @@ pub fn parse(s: &str) -> Result<Ast, ParseError> {
     }
 
     if parser.peek().is_none() {
-        Ok(Ast::Program(Span {
-            start: 0,
-            end: s.len()
-        }, asts))
+        Ok(Ast::Program(
+            Span {
+                start: 0,
+                end: s.len(),
+            },
+            asts,
+        ))
     } else {
         Err(ParseError {
             span: parser.span(),

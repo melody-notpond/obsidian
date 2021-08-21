@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use super::parser::Ast;
 use super::super::super::middleend::types::Type;
+use super::parser::Ast;
 
 #[derive(Debug, Clone)]
 pub enum TypeParseError {
@@ -26,31 +26,29 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
         | Ast::Lifetime(_, _)
         | Ast::Program(_, _) => Err(TypeParseError::NotAType),
 
-        Ast::Symbol(_, sym) => {
-            match sym.as_str() {
-                "i8" => Ok(Type::I8),
-                "i16" => Ok(Type::I16),
-                "i32" => Ok(Type::I32),
-                "i64" => Ok(Type::I64),
-                "isize" => Ok(Type::ISize),
-                "u8" => Ok(Type::U8),
-                "u16" => Ok(Type::U16),
-                "u32" => Ok(Type::U32),
-                "u64" => Ok(Type::U64),
-                "usize" => Ok(Type::USize),
-                "bool" => Ok(Type::Bool),
+        Ast::Symbol(_, sym) => match sym.as_str() {
+            "i8" => Ok(Type::I8),
+            "i16" => Ok(Type::I16),
+            "i32" => Ok(Type::I32),
+            "i64" => Ok(Type::I64),
+            "isize" => Ok(Type::ISize),
+            "u8" => Ok(Type::U8),
+            "u16" => Ok(Type::U16),
+            "u32" => Ok(Type::U32),
+            "u64" => Ok(Type::U64),
+            "usize" => Ok(Type::USize),
+            "bool" => Ok(Type::Bool),
 
-                "f32" => Ok(Type::F32),
-                "f64" => Ok(Type::F64),
+            "f32" => Ok(Type::F32),
+            "f64" => Ok(Type::F64),
 
-                "nil" => Ok(Type::Nil),
+            "nil" => Ok(Type::Nil),
 
-                "..." => Ok(Type::VarArgs(None)),
+            "..." => Ok(Type::VarArgs(None)),
 
-                _ if generics_set.contains(&sym) => Ok(Type::Generic(sym)),
-                _ => Ok(Type::TypeName(sym, vec![]))
-            }
-        }
+            _ if generics_set.contains(&sym) => Ok(Type::Generic(sym)),
+            _ => Ok(Type::TypeName(sym, vec![])),
+        },
 
         Ast::SExpr(_, mut exprs) => {
             if exprs.is_empty() {
@@ -58,17 +56,25 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
             } else {
                 let first = exprs.remove(0);
                 if let Ast::Symbol(_, sym) = first {
-                    let (generics, lifetimes): (Vec<_>, Vec<_>) = exprs.into_iter().map(|v| if let Ast::Lifetime(_, v) = v { (None, Some(v)) } else { (Some(parse_type(v, generics_set)), None) }).unzip();
+                    let (generics, lifetimes): (Vec<_>, Vec<_>) = exprs
+                        .into_iter()
+                        .map(|v| {
+                            if let Ast::Lifetime(_, v) = v {
+                                (None, Some(v))
+                            } else {
+                                (Some(parse_type(v, generics_set)), None)
+                            }
+                        })
+                        .unzip();
                     let generics: Result<Vec<_>, _> = generics.into_iter().flatten().collect();
                     let mut generics = generics?;
                     let mut lifetimes: Vec<_> = lifetimes.into_iter().flatten().collect();
 
                     match sym.as_str() {
-                          "i8" | "i16" | "i32" | "i64"
-                        | "u8" | "u16" | "u32" | "u64"
-                                       | "f32" | "f64"
-                        | "bool" | "isize" | "usize"
-                        => Err(TypeParseError::DoesNotTakeGenerics),
+                        "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "f32"
+                        | "f64" | "bool" | "isize" | "usize" => {
+                            Err(TypeParseError::DoesNotTakeGenerics)
+                        }
 
                         "&" => {
                             if generics.len() == 1 && lifetimes.is_empty() {
@@ -122,13 +128,9 @@ pub fn parse_type(ast: Ast, generics_set: &HashSet<&String>) -> Result<Type, Typ
                             }
                         }
 
-                        _ if generics_set.contains(&sym) => {
-                            Ok(Type::Generic(sym))
-                        }
+                        _ if generics_set.contains(&sym) => Ok(Type::Generic(sym)),
 
-                        _ => {
-                            Ok(Type::TypeName(sym, generics))
-                        }
+                        _ => Ok(Type::TypeName(sym, generics)),
                     }
                 } else {
                     Err(TypeParseError::NotASymbol)

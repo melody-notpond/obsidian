@@ -24,7 +24,7 @@ pub enum NativeOperation {
     Lte,
     Gte,
     Eq,
-    Ne
+    Ne,
 }
 
 #[derive(Clone, Debug)]
@@ -42,19 +42,13 @@ impl SExprMetadata {
     }
 
     pub fn new_with_type(span: Span, type_: Type) -> SExprMetadata {
-        SExprMetadata {
-            span,
-            type_,
-        }
+        SExprMetadata { span, type_ }
     }
 }
 
 impl Default for SExprMetadata {
     fn default() -> Self {
-        Self::new(Span {
-            start: 0,
-            end: 0,
-        })
+        Self::new(Span { start: 0, end: 0 })
     }
 }
 
@@ -126,20 +120,39 @@ pub enum SExpr {
 
     // Functions
     //       metadata       name    generics     lifetimes    arguments            return type  body
-    Function(SExprMetadata, String, Vec<String>, Vec<String>, Vec<(String, Type)>, Type,        Box<SExpr>),
+    Function(
+        SExprMetadata,
+        String,
+        Vec<String>,
+        Vec<String>,
+        Vec<(String, Type)>,
+        Type,
+        Box<SExpr>,
+    ),
 
     // Let expressions
     Let(SExprMetadata, Pattern, Type, Box<SExpr>),
 
     // Assignments
-    Assign(SExprMetadata, Box<SExpr>, Option<NativeOperation>, Box<SExpr>),
+    Assign(
+        SExprMetadata,
+        Box<SExpr>,
+        Option<NativeOperation>,
+        Box<SExpr>,
+    ),
 
     // Attributes
     Attribute(SExprMetadata, Vec<String>),
 
     // Structs
     //     metadata       name    generics     lifetimes    fields
-    Struct(SExprMetadata, String, Vec<String>, Vec<String>, Vec<(String, Type)>),
+    Struct(
+        SExprMetadata,
+        String,
+        Vec<String>,
+        Vec<String>,
+        Vec<(String, Type)>,
+    ),
 
     // Enums
     Enum(SExprMetadata, String, Type, Vec<(String, Option<i64>)>),

@@ -62,7 +62,8 @@ impl MacroArgs {
                         }
 
                         _ => {
-                            let vec: Result<Vec<_>, _> = exprs.iter().map(MacroArgs::parse).collect();
+                            let vec: Result<Vec<_>, _> =
+                                exprs.iter().map(MacroArgs::parse).collect();
                             Ok(MacroArgs::SExpr(vec?))
                         }
                     }
@@ -98,12 +99,10 @@ impl MacroArgs {
                 }
             }
 
-            MacroArgs::VariadicArg(arg) => {
-                Some(vec![(arg.clone(), (Ast::SExpr(Span {
-                    start: 0,
-                    end: 0,
-                }, asts.to_vec()), true))])
-            }
+            MacroArgs::VariadicArg(arg) => Some(vec![(
+                arg.clone(),
+                (Ast::SExpr(Span { start: 0, end: 0 }, asts.to_vec()), true),
+            )]),
 
             MacroArgs::SExpr(sexpr) => {
                 if sexpr.len() == asts.len() {
@@ -121,9 +120,13 @@ impl MacroArgs {
                     }
 
                     Some(vec)
-                } else if sexpr.len() - 1 <= asts.len() && matches!(sexpr.last(), Some(MacroArgs::VariadicArg(_))) {
+                } else if sexpr.len() - 1 <= asts.len()
+                    && matches!(sexpr.last(), Some(MacroArgs::VariadicArg(_)))
+                {
                     let mut vec = vec![];
-                    for (i, (ast, arg)) in asts.iter().zip(sexpr[..sexpr.len() - 1].iter()).enumerate() {
+                    for (i, (ast, arg)) in
+                        asts.iter().zip(sexpr[..sexpr.len() - 1].iter()).enumerate()
+                    {
                         if let Ast::SExpr(_, v) = ast {
                             if matches!(arg, MacroArgs::SExpr(_)) {
                                 vec.extend(arg.matches(v)?);
@@ -138,10 +141,10 @@ impl MacroArgs {
                     if sexpr.len() < asts.len() {
                         vec.extend(sexpr.last().unwrap().matches(&asts[sexpr.len() - 1..])?);
                     } else if let Some(MacroArgs::VariadicArg(arg)) = sexpr.last() {
-                        vec.push((arg.clone(), (Ast::SExpr(Span {
-                            start: 0,
-                            end: 0
-                        }, vec![]), true)));
+                        vec.push((
+                            arg.clone(),
+                            (Ast::SExpr(Span { start: 0, end: 0 }, vec![]), true),
+                        ));
                     }
 
                     Some(vec)
@@ -176,7 +179,12 @@ pub fn add_macros(map: &mut MacroMap, ast: &Ast) -> Result<(), MacroError> {
                 if func == "macro" {
                     if let Some(Ast::Symbol(_, name)) = exprs.get(1) {
                         let mut macro_ = Vec::new();
-                        for (args, body) in exprs.iter().skip(2).step_by(2).zip(exprs.iter().skip(3).step_by(2)) {
+                        for (args, body) in exprs
+                            .iter()
+                            .skip(2)
+                            .step_by(2)
+                            .zip(exprs.iter().skip(3).step_by(2))
+                        {
                             macro_.push((MacroArgs::parse(args)?, body.clone()));
                         }
 
@@ -299,4 +307,3 @@ pub fn apply_macros(map: &MacroMap, ast: &mut Ast) -> Result<(), MacroError> {
         }
     }
 }
-

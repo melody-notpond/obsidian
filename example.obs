@@ -1,47 +1,22 @@
-struct Vec {
-    len: usize,
-    cap: usize,
-    ptr: *mut 'a
-}
+macro {
+    while (cond) {
+        expr
+    } else {
+        else
+    }
+} {
+    loop {
+        if (cond) {
+            expr
+        } else {
+            break else
+        }
+    }
+};
 
-enum Error : u8 {
-    SomeError,
-    SomeOtherError = 2,
-    Idk
-}
-
-fn new(vals: ...'a) [Vec['a]] {
-    let mut vec = Vec@{ 0, 0, null };
-    for (:val) in (iter(vals)) {
-        vec.push@(val);
-    };
-    vec
-}
-
-fn drop(vec: Vec['a]) {
-    for (:v) in (iter@(vec)) {
-        drop@(v);
-    };
-    dealloc@(vec.values);
-}
-
-fn main() {
-    let mut vec = new@(10, 20, 30, 40);
-    defer drop@(vec);
-    try {
-        stuff;
-    } catch (:IterEnd {}) {
-        do_stuff@();
-    } catch (:Overflow {}) {
-        do_something@();
-    } catch (:_) {
-        oh_no@();
-    };
-    while (true) {
-        println@("uwu");
-    };
-    while (true) {
-        println@("uwu");
-        break
-    } else { false };
-}
+while (true) {
+    do_something@();
+    break do_another@()
+} else {
+    something_else@()
+};
