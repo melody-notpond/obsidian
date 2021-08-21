@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs;
 
 use obsidian::frontends::c::macros;
