@@ -8,3 +8,8 @@ edition = "2018"
 [dependencies]
 logos = "0.11.4"
 pom = "3.2.0"
+lalrpop-util = "0.19.6"
+regex = "1"
+
+[build-dependencies]
+lalrpop = "0.19.6"

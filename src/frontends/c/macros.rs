@@ -1,33 +1,6 @@
 use std::collections::HashMap;
 
-use super::parser::Ast;
-
-/*
-pub enum Ast {
-    Int(i64),
-    Word(u64),
-    Float(f64),
-    Char(u8),
-    True,
-    False,
-    String(String),
-    Symbol(String),
-    Infix(String, Box<Ast>, Box<Ast>),
-    Tuple(Vec<Ast>),
-    StructInit(String, Vec<Ast>),
-    Application(Box<Ast>, Vec<Ast>),
-    Attribute(Vec<Ast>),
-    Prefix(String, Box<Ast>),
-    TypeCast(Type, Box<Ast>),
-    Pattern(Pattern),
-    Let(Box<Ast>, Box<Ast>),
-    Block(Vec<Ast>, bool),
-    Box(Vec<(String, Vec<Ast>)>),
-    FuncDef(String, Vec<(String, Type)>, Type, Box<Ast>),
-    Struct(String, HashMap<String, Type>),
-    Enum(String, Type, Vec<(String, Option<u64>)>),
-}
-*/
+use super::ast::Ast;
 
 #[derive(Debug, Clone)]
 pub struct Signature {
@@ -110,11 +83,16 @@ impl Signature {
             }
 
             Ast::Tuple(v)
-            | Ast::StructInit(_, v)
-            | Ast::Application(_, v)
+            | Ast::Application(_, _, v)
             | Ast::Attribute(v)
             | Ast::Block(v, _) => {
                 for ast in v {
+                    Signature::replace(ast, var_map);
+                }
+            }
+
+            Ast::StructInit(_, v) => {
+                for (_, ast) in v {
                     Signature::replace(ast, var_map);
                 }
             }
@@ -169,11 +147,17 @@ fn replace_macros_helper(ast: &mut Ast, macros: &[Signature]) {
         }
 
         Ast::Tuple(v)
-        | Ast::StructInit(_, v)
-        | Ast::Application(_, v)
+        | Ast::Application(_, _, v)
         | Ast::Attribute(v)
         | Ast::Block(v, _) => {
             for ast in v {
+                replace_macros_helper(ast, macros);
+            }
+        }
+
+
+        Ast::StructInit(_, v) => {
+            for (_, ast) in v {
                 replace_macros_helper(ast, macros);
             }
         }

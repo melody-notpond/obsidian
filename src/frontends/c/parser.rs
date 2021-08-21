@@ -1,37 +1,10 @@
-use std::collections::HashMap;
-
 use pom::parser::*;
 
+use super::ast::Ast;
 use super::super::super::middleend::ir::Pattern;
 use super::super::super::middleend::types::Type;
 
 type Parser<'a> = pom::parser::Parser<'a, u8, Ast>;
-
-#[derive(Debug, Clone)]
-pub enum Ast {
-    Int(i64),
-    Word(u64),
-    Float(f64),
-    Char(u8),
-    True,
-    False,
-    String(String),
-    Symbol(String),
-    Infix(String, Box<Ast>, Box<Ast>),
-    Tuple(Vec<Ast>),
-    StructInit(String, Vec<Ast>),
-    Application(Box<Ast>, Vec<Ast>),
-    Attribute(Vec<Ast>),
-    Prefix(String, Box<Ast>),
-    TypeCast(Type, Box<Ast>),
-    Pattern(Pattern),
-    Let(Box<Ast>, Box<Ast>),
-    Block(Vec<Ast>, bool),
-    Box(Vec<(String, Vec<Ast>)>),
-    FuncDef(String, Vec<(String, Type)>, Type, Box<Ast>),
-    Struct(String, HashMap<String, Type>),
-    Enum(String, Type, Vec<(String, Option<u64>)>),
-}
 
 fn space<'a>(necessary: bool) -> pom::parser::Parser<'a, u8, ()> {
     one_of(b" \t\r\n")
@@ -193,7 +166,7 @@ fn struct_init<'a>() -> Parser<'a> {
             } else {
                 unreachable!();
             },
-            v.1,
+            v.1.into_iter().map(|v| (String::new(), v)).collect(),
         )
     })
 }
@@ -204,7 +177,7 @@ fn application<'a>() -> Parser<'a> {
         - space(false)
         - sym(b')')
         - space(false))
-    .map(|v| Ast::Application(Box::new(v.0), v.1))
+    .map(|v| Ast::Application(Box::new(v.0), Type::Unassigned, v.1))
 }
 
 fn attribute<'a>() -> Parser<'a> {
@@ -441,11 +414,6 @@ fn type_cast<'a>() -> Parser<'a> {
         .map(|v| Ast::TypeCast(v.0, Box::new(v.1)))
 }
 
-/*
-   SRange(i64, i64),
-   URange(u64, u64),
-   FRange(f64, f64),
-* */
 fn pattern_raw<'a>() -> Parser<'a> {
     (sym(b'_').map(|_| Ast::Pattern(Pattern::Wildcard))
         | (seq(b"mut")

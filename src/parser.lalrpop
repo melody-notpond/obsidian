@@ -1,0 +1,377 @@
+use lalrpop_util::ParseError;
+
+use std::str::FromStr;
+use obsidian::frontends::c::ast::{self, Ast, Error};
+use obsidian::middleend::types::Type;
+use obsidian::middleend::ir::Pattern;
+
+grammar;
+
+extern {
+    type Error = Error;
+}
+
+match {
+    r"\s*" => { },
+    r"//[^\n\r]*[\n\r]*" => { },
+    r"/\*([^\*]*\*+[^\*/])*([^\*]*\*+|[^\*])*\*/" => { },
+    _
+}
+
+IntRaw: i64 = {
+    <s:r"0b[01]+"> =>? i64::from_str_radix(&s[2..], 2).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+    <s:r"0o[01234567]+"> =>? i64::from_str_radix(&s[2..], 8).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+    <s:r"0x[0-9a-fA-F]+"> =>? i64::from_str_radix(&s[2..], 16).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+    <s:r"[0-9]+"> =>? i64::from_str(s).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+}
+
+Int: Ast =
+    <IntRaw> => Ast::Int(<>);
+
+WordRaw: u64 = {
+    <s:r"0b[01]+u"> =>? u64::from_str_radix(&s[2..s.len() - 1], 2).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+    <s:r"0o[01234567]+u"> =>? u64::from_str_radix(&s[2..s.len() - 1], 8).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+    <s:r"0x[0-9a-fA-F]+u"> =>? u64::from_str_radix(&s[2..s.len() - 1], 16).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+    <s:r"[0-9]+u"> =>? u64::from_str(&s[..s.len() - 1]).map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    }),
+}
+
+Word: Ast =
+    <WordRaw> => Ast::Word(<>);
+
+FloatRaw: f64 =
+    <s:r"[0-9]+((\.[0-9]+)([eE][+\-]?[0-9]+)?|[eE][+\-]?[0-9]+)"> =>? s.parse().map_err(|_| ParseError::User {
+        error: Error::NumberTooBig,
+    });
+
+Float: Ast =
+    <FloatRaw> => Ast::Float(<>);
+
+Char: Ast = {
+    <s:r"'[^\\']'"> => Ast::Char(s.bytes().skip(1).next().unwrap() as u8),
+    <s:"'\\n'"> => Ast::Char(b'\n'),
+    <s:"'\\r'"> => Ast::Char(b'\r'),
+    <s:"'\\t'"> => Ast::Char(b'\t'),
+    <s:"'\\0'"> => Ast::Char(b'\0'),
+    <s:"'\\\\'"> => Ast::Char(b'\\'),
+    <s:"'\\''"> => Ast::Char(b'\''),
+    <s:"'\\\"'"> => Ast::Char(b'\"'),
+}
+
+Bool: Ast = {
+    <s:"true"> => Ast::True,
+    <s:"false"> => Ast::False,
+}
+
+String: Ast = {
+    <s:r#""([^\\"]|\\.)*""#> => Ast::String(ast::unescape_sequences(&s[1..s.len() - 1])),
+    <s:r"(\\\\[^\n]*\n*)+"> => Ast::String(ast::strip_backslashes(s)),
+}
+
+SymbolRaw = <r#"[^`1234567890\-=\[\]\\;',\./~!@#$%^&*()+{}|:"<>?\s][^`!@#$%^&*()\-+=\[\]\\;,\./{}|:"<>?\s]*"#>;
+
+Symbol: Ast =
+    <s:SymbolRaw> => Ast::Symbol(String::from(s));
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+StructInitField: (&'input str, Ast) = {
+    <s:SymbolRaw> => (s, Ast::Symbol(String::from(s))),
+    <s:SymbolRaw> ":" <e:Expr> => (s, e)
+};
+
+StructInit: Ast =
+    <f:Symbol> "{" <a:Comma<StructInitField>> "}" => Ast::StructInit(if let Ast::Symbol(f) = f {
+        f
+    } else {
+        unreachable!();
+    }, a.into_iter().map(|v| (String::from(v.0), v.1)).collect());
+
+Application: Ast =
+    <f:Symbol> <t:("[" <Type> "]")?> "(" <a:Comma<Expr>> ")" => Ast::Application(Box::new(f), t.unwrap_or(Type::Unassigned), a);
+
+AttributeElement: Ast = {
+    <Symbol>,
+    <Application>
+};
+
+Attribute: Ast =
+    <s:AttributeElement> <mut a:("." <AttributeElement>)*> => {
+        if a.is_empty() {
+            s
+        } else {
+            a.insert(0, s);
+            Ast::Attribute(a)
+        }
+    };
+
+Tuple: Ast =
+    "(" <mut v:(<Expr> ",")*> <e:Expr?> ")" => {
+        if (e.is_none() && v.is_empty()) || v.len() >= 1 || e.is_none() {
+            if let Some(e) = e {
+                v.push(e);
+            }
+
+            Ast::Tuple(v)
+        } else {
+            e.unwrap()
+        }
+    };
+
+Value: Ast = {
+    <n:Int> => n,
+    <n:Word> => n,
+    <n:Float> => n,
+    <n:Char> => n,
+    <n:Bool> => n,
+    <n:String> => n,
+    <n:Attribute> => n,
+    <n:StructInit> => n,
+    <n:Tuple> => n,
+    <Pattern>,
+    <Block>,
+}
+
+PrefixOp: String = {
+    <r"[-]"> => String::from(<>),
+    <r"[*]"> => String::from(<>),
+    <r"[!]"> => String::from(<>),
+    "&" <v:"mut"?> => {
+        if let Some(v) = v {
+            String::from("&mut")
+        } else {
+            String::from("&")
+        }
+    }
+}
+
+Prefix: Ast =
+    <o:PrefixOp?> <s:Value> => if let Some(o) = o {
+        Ast::Prefix(o.chars().filter(|v| !v.is_whitespace()).collect(), Box::new(s))
+    } else {
+        s
+    };
+
+InfixOp<Left, Op, Right, Result>: Result = {
+    <l:Left> <o:Op> <r:Right> => Ast::Infix(String::from(o), Box::new(l), Box::new(r)),
+    <Result>,
+};
+
+InfixLOp<Left, Op, Right>: Ast = InfixOp<Left, Op, Right, Right>;
+InfixROp<Left, Op, Right>: Ast = InfixOp<Left, Op, Right, Left>;
+
+MulDivModOp = {
+    <r"[*]">,
+    <r"[%/]">,
+};
+
+AddSubOp = {
+    <r"[+]">,
+    <r"[-]">,
+};
+
+MulDivMod: Ast = InfixLOp<MulDivMod, MulDivModOp, Prefix>;
+AddSub: Ast = InfixLOp<AddSub, AddSubOp, MulDivMod>;
+Bitshift: Ast = InfixLOp<Bitshift, r"<<|>>", AddSub>;
+Compare: Ast = InfixLOp<Compare, r"<=?|==|!=|>=?", Bitshift>;
+BitAnd: Ast = InfixLOp<BitAnd, "&", Compare>;
+BitOr: Ast = InfixLOp<BitOr, "|", BitAnd>;
+BitXor: Ast = InfixLOp<BitXor, "^", BitOr>;
+BoolAnd: Ast = InfixLOp<BoolAnd, "&&", BitXor>;
+BoolOr: Ast = InfixLOp<BoolOr, "||", BoolAnd>;
+BoolXor: Ast = InfixLOp<BoolXor, "^^", BoolOr>;
+Assign: Ast = InfixROp<BoolXor, r"(<<|>>|[*/%+\-&|^])?=", Assign>;
+
+Type: Type = {
+    "i8" => Type::I8,
+    "i16" => Type::I16,
+    "i32" => Type::I32,
+    "i64" => Type::I64,
+    "isize" => Type::ISize,
+    "u8" => Type::U8,
+    "u16" => Type::U16,
+    "u32" => Type::U32,
+    "u64" => Type::U64,
+    "usize" => Type::USize,
+    "bool" => Type::Bool,
+
+    "f32" => Type::F32,
+    "f64" => Type::F64,
+
+    "nil" => Type::Nil,
+    "(" <v:Comma<Type>> ")" =>
+        if v.is_empty() {
+            Type::Nil
+        } else {
+            Type::Tuple(v)
+        },
+
+    "&" <Type> => Type::ConstRef(Box::new(<>)),
+    "&" "mut" <Type> => Type::MutRef(Box::new(<>)),
+
+    "*" <Type> => Type::ConstPtr(Box::new(<>)),
+    "*" "mut" <Type> => Type::MutPtr(Box::new(<>)),
+
+    "_" => Type::Wildcard,
+
+    r"'[a-zA-Z0-9]+" => Type::Generic(String::from(&<>[1..])),
+
+    <s:SymbolRaw> <g:("[" <Comma<Type>> "]")?> => Type::TypeName(String::from(s), g.into_iter().flatten().collect()),
+
+    "..." <Type?> => Type::VarArgs(<>.map(Box::new)),
+};
+
+TypeCast: Ast =
+    "[" <t:Type> "]" <e:Expr> => Ast::TypeCast(t, Box::new(e));
+
+PatternStructField: (&'input str, Pattern) = {
+    <s:SymbolRaw> => (s, Pattern::Name(String::from(s))),
+    <s:SymbolRaw> ":" <p:PatternOr> => (s, p)
+};
+
+PatternRaw: Pattern = {
+    "_" => Pattern::Wildcard,
+    "mut" <SymbolRaw> => Pattern::MutName(String::from(<>)),
+    "enum" <SymbolRaw> => Pattern::Enum(String::from(<>)),
+    <SymbolRaw> => Pattern::Name(String::from(<>)),
+
+    "(" <mut v:(<PatternOr> ",")*> <e:PatternOr?> ")" => {
+        if !v.is_empty() {
+            if let Some(e) = e {
+                v.push(e);
+            }
+
+            Pattern::Tuple(v)
+        } else if let Some(e) = e {
+            e
+        } else {
+            Pattern::Tuple(v)
+        }
+    },
+
+    <s:SymbolRaw> "{" <a:Comma<PatternStructField>> "}" => Pattern::Struct(String::from(s), a.into_iter().map(|v| (String::from(v.0), v.1)).collect()),
+
+    <a:IntRaw> "-" <b:IntRaw> => Pattern::SRange(a, b),
+    <a:WordRaw> "-" <b:WordRaw> => Pattern::URange(a, b),
+    <a:FloatRaw> "-" <b:FloatRaw> => Pattern::FRange(a, b),
+};
+
+PatternOr: Pattern =
+    <a:PatternRaw> <mut b:("|" <PatternRaw>)*> =>
+        if b.is_empty() {
+            a
+        } else {
+            b.insert(0, a);
+            Pattern::Or(b)
+        };
+
+Pattern: Ast =
+    "$" <PatternRaw> => Ast::Pattern(<>);
+
+Let: Ast =
+    "let" <p:PatternRaw> "=" <e:Expr> => Ast::Let(Box::new(Ast::Pattern(p)), Box::new(e));
+
+Statement: Ast = {
+    <Let>,
+    <Expr>,
+}
+
+Block: Ast =
+    "{" <mut v:(<Statement> ";")*> <e:Statement?> "}" => match e {
+        Some(e) => {
+            v.push(e);
+            Ast::Block(v, true)
+        }
+
+        None => Ast::Block(v, false),
+    };
+
+BoxIdentifier = <r#":[^`1234567890\-=\[\]\\;',\./~!@#$%^&*()+{}|:"<>?\s][^`!@#$%^&*()\-+=\[\]\\;,\./{}|:"<>?\s]*"#>;
+
+BoxExpr: Ast = {
+    <Block>,
+    "(" <Expr> ")",
+}
+
+Box: Ast = {
+    <v:(<BoxIdentifier> <(<BoxExpr>)*>)+> => Ast::Box(v.into_iter().map(|v| (String::from(&v.0[1..]), v.1)).collect()),
+}
+
+Expr: Ast = {
+    <Assign>,
+    <TypeCast>,
+    <Box>,
+}
+
+FuncArg: (&'input str, Type) =
+    <SymbolRaw> ":" <Type>;
+
+FuncTypeCast: Ast =
+    "[" <t:Type> "]" <e:Block> => Ast::TypeCast(t, Box::new(e));
+
+FuncExpr: Ast = {
+    <FuncTypeCast>,
+    <Block>,
+}
+
+FuncDef: Ast =
+    "fn" <f:SymbolRaw> "(" <a:Comma<FuncArg>> ")" <e:FuncExpr> => {
+        let (ret_type, body) = match e {
+            Ast::TypeCast(t, e) => (t, e),
+            _ => (Type::Nil, Box::new(e))
+        };
+        Ast::FuncDef(String::from(f), a.into_iter().map(|v| (String::from(v.0), v.1)).collect(), ret_type, body)
+    };
+
+StructDef: Ast =
+    "struct" <s:SymbolRaw> "{" <f:Comma<FuncArg>> "}" =>
+        Ast::Struct(String::from(s), f.into_iter().map(|v| (String::from(v.0), v.1)).collect());
+
+EnumVariantArg: Ast = {
+    <Int>,
+    <Word>,
+}
+
+EnumVariants: (&'input str, Option<u64>) = {
+    <s:SymbolRaw> <v:("=" <EnumVariantArg>)?> => (s, v.map(|v| match v {
+        Ast::Int(i) => i as u64,
+        Ast::Word(w) => w,
+        _ => unreachable!(),
+    })),
+}
+
+Enum: Ast =
+    "enum" <s:SymbolRaw> <t:(":" <Type>)?> "{" <v:Comma<EnumVariants>> "}" =>
+        Ast::Enum(String::from(s), t.unwrap_or(Type::I32), v.into_iter().map(|v| (String::from(v.0), v.1)).collect());
+
+TopExpr: Ast = {
+    <Box> ";",
+    <FuncDef>,
+    <StructDef>,
+    <Enum>,
+}
+
+pub Full: Vec<Ast> = <TopExpr*>;

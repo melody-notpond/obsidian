@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 use std::fs;
 
-use obsidian::frontends::c::parser;
 use obsidian::frontends::c::macros;
 
+#[macro_use]
+extern crate lalrpop_util;
+
+lalrpop_mod!(parser);
+
 fn main() {
-    let contents = fs::read_to_string("example.obs").unwrap();
-    let mut ast = parser::parse(&contents).unwrap();
-    println!("{:?}\n\n", ast);
-
+    let mut asts = parser::FullParser::new().parse(&fs::read_to_string("example.obs").unwrap()).unwrap();
+    println!("{:?}", asts);
     let mut macros = vec![];
-    macros::get_macros(&mut ast, &mut macros);
+    macros::get_macros(&mut asts, &mut macros);
+    macros::replace_macros(&mut asts, &macros);
 
-    println!("{:?}\n\n", macros);
-
-    macros::replace_macros(&mut ast, &macros);
-    println!("{:?}", ast);
+    println!("\n\n{:?}", asts);
 }

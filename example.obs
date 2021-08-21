@@ -11,67 +11,67 @@ enum Error : u8 {
 }
 
 fn new(vals: ...'a) [Vec['a]] {
-    let mut vec = Vec@{ 0, 0, null };
-    for (:val) in (iter(vals)) {
-        vec.push@(val);
+    let mut vec = Vec { len: 0, cap: 0, ptr: null };
+    :for ($val) :in (iter(vals)) {
+        vec.push(val);
     };
     vec
 }
 
 fn drop(vec: Vec['a]) {
-    for (:v) in (iter@(vec)) {
-        drop@(v);
+    :for ($v) :in (iter (vec)) {
+        drop(v);
     };
-    dealloc@(vec.values);
+    dealloc(vec.values);
 }
 
-macro {
-    while (cond) {
+:macro {
+    :while (cond) {
         expr
-    } else {
+    } :else {
         else
     }
 } {
-    loop {
-        if (cond) {
+    :loop {
+        :if (cond) {
             expr;
-        } else {
-            break else;
+        } :else {
+            :break (else);
         }
     }
 };
 
-macro {
-    while (cond) {
+:macro {
+    :while (cond) {
         expr
     }
 } {
-    loop {
-        if (cond) {
+    :loop {
+        :if (cond) {
             expr;
-        } else {
-            break;
+        } :else {
+            :break;
         }
     }
 };
 
 fn main() {
-    let mut vec = new@(10, 20, 30, 40);
-    defer drop@(vec);
-    try {
+    let mut vec = new (10, 20, 30, 40);
+    :defer (drop(vec));
+    :try {
         stuff;
-    } catch (:IterEnd {}) {
-        do_stuff@();
-    } catch (:Overflow {}) {
-        do_something@();
-    } catch (:_) {
-        oh_no@();
+    } :catch ($IterEnd {}) {
+        do_stuff();
+    } :catch ($Overflow {}) {
+        do_something();
+    } :catch ($_) {
+        oh_no();
     };
-    while (true) {
-        println@("uwu");
+    :while (true) {
+        println("uwu");
     };
-    while (true) {
-        println@("uwu");
-        break
-    } else { false };
+    :while (true) {
+        println("uwu");
+        :break
+    } :else { false };
 }
