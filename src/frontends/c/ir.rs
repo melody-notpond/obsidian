@@ -118,7 +118,11 @@ fn lowering_helper(ast: Ast) -> Result<SExpr, IrError> {
                         let mut v = lowering_helper(v)?;
 
                         if let SExpr::Application(_, _, a) = &mut v {
-                            a.insert(0, SExpr::Attribute(SExprMetadata::new(0..0), attrs));
+                            if attrs.len() == 1 {
+                                a.insert(0, attrs.remove(0));
+                            } else {
+                                a.insert(0, SExpr::Attribute(SExprMetadata::new(0..0), attrs));
+                            }
                             attrs = vec![v];
                         } else {
                             unreachable!();
