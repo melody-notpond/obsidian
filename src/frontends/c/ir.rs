@@ -311,7 +311,39 @@ fn lowering_helper(ast: Ast) -> Result<SExpr, IrError> {
                         Ok(SExpr::Try(SExprMetadata::new(0..0), Box::new(try_block), catches))
                     }
 
-                    "match" => Err(IrError::InvalidMatch),
+                    "match" => {
+                        if vals.len() == 1 && vals[0].1.len() == 2 {
+                            let body = vals[0].1.remove(1);
+                            let value = lowering_helper(vals[0].1.remove(0))?;
+
+                            if let Ast::Block(v, _) = body {
+                                let mut vec = vec![];
+
+                                for v in v {
+                                    match v {
+                                        Ast::Box(mut v) if v.len() == 1 && v[0].0 == "case" && v[0].1.len() == 2 => {
+                                            let (_, mut v) = v.remove(0);
+                                            let body = lowering_helper(v.remove(1))?;
+                                            let pat = if let Ast::Pattern(p) = v.remove(0) {
+                                                p
+                                            } else {
+                                                return Err(IrError::InvalidMatch);
+                                            };
+                                            vec.push((pat, body));
+                                        }
+
+                                        _ => return Err(IrError::InvalidMatch),
+                                    }
+                                }
+
+                                Ok(SExpr::Match(SExprMetadata::new(0..0), Box::new(value), vec))
+                            } else {
+                                Err(IrError::InvalidMatch)
+                            }
+                        } else {
+                            Err(IrError::InvalidMatch)
+                        }
+                    }
 
                     "loop" => {
                         if vals.len() == 1 {

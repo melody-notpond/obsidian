@@ -119,7 +119,7 @@ pub enum SExpr {
     Try(SExprMetadata, Box<SExpr>, Vec<(Pattern, SExpr)>),
 
     // Match expression
-    Match(SExprMetadata, Vec<(Pattern, SExpr)>, Option<Box<SExpr>>),
+    Match(SExprMetadata, Box<SExpr>, Vec<(Pattern, SExpr)>),
 
     // Loop expression
     Loop(SExprMetadata, Option<(Pattern, Box<SExpr>)>, Box<SExpr>),

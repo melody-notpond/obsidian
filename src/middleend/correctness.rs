@@ -13,11 +13,11 @@ fn collect_root_functions(root: &mut IrModule, errors: &mut Vec<CorrectnessError
     let mut funcs = vec![];
     for (i, sexpr) in root.sexprs.iter().enumerate() {
         match sexpr {
-            SExpr::Function(_, _, _, _, _, Type::Unassigned, _) => {
+            SExpr::Function(_, _, _, Type::Unassigned, _) => {
                 errors.push(CorrectnessError::UntypedRootFunction);
             }
 
-            SExpr::Function(_, _, _, _, _, _, _) => {
+            SExpr::Function(_, _, _, _, _) => {
                 funcs.push(i);
             }
 
@@ -28,7 +28,7 @@ fn collect_root_functions(root: &mut IrModule, errors: &mut Vec<CorrectnessError
     for (i, func) in funcs.into_iter().enumerate() {
         let func = root.sexprs.remove(func - i);
         let (name, args, ret_type) =
-            if let SExpr::Function(_, name, _, _, arguments, ret_type, _) = &func {
+            if let SExpr::Function(_, name, arguments, ret_type, _) = &func {
                 (name, arguments.iter().map(|v| &v.1), ret_type)
             } else {
                 unreachable!()

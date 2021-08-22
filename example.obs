@@ -70,7 +70,7 @@ macro! {
 
 fn main() {
     let mut vec = new(10, 20, 30, 40);
-    // defer! (drop(vec));
+    // defer! (vec.drop());
 
     try! {
         stuff;
@@ -82,15 +82,14 @@ fn main() {
         oh_no();
     };
 
-    /*
-    match! vec
-    case ($_) {
-        do_something()
-    }
-    case ($a | b) {
-        do_something()
+    match! (vec) {
+        case! ($_) {
+            do_something()
+        };
+        case! ($(a | b)) {
+            do_something()
+        };
     };
-    */
 
     while! (true) {
         println("uwu");
