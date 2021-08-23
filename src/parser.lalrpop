@@ -315,15 +315,75 @@ Block: Ast =
 BoxIdentifier: &'input str =
     <r#"[^`1234567890\-=\[\]\\;',\./~!@#$%^&*()+{}|:"<>?\s][^`!@#$%^&*()\-+=\[\]\\;,\./{}|:"<>?\s]*!"#> => &<>[..<>.len() - 1];
 
-BoxExpr: Ast = {
+BoxPattern: Pattern = {
+    "_" => Pattern::Wildcard,
+    "mut" <SymbolRaw> => Pattern::MutName(String::from(<>)),
+    "enum" <SymbolRaw> => Pattern::Enum(String::from(<>)),
+    <SymbolRaw> => Pattern::Name(String::from(<>)),
+
+    "(" <mut v:(<PatternOr> ",")*> <e:PatternOr?> ")" => {
+        if !v.is_empty() {
+            if let Some(e) = e {
+                v.push(e);
+            }
+
+            Pattern::Tuple(v)
+        } else if let Some(e) = e {
+            e
+        } else {
+            Pattern::Tuple(v)
+        }
+    },
+
+    <a:IntRaw> => Pattern::SRange(a, a),
+    <a:IntRaw> "-" <b:IntRaw> => Pattern::SRange(a, b),
+    <a:WordRaw> => Pattern::URange(a, a),
+    <a:WordRaw> "-" <b:WordRaw> => Pattern::URange(a, b),
+    <a:FloatRaw> => Pattern::FRange(a, a),
+    <a:FloatRaw> "-" <b:FloatRaw> => Pattern::FRange(a, b),
+}
+
+BoxValue: Ast = {
+    <n:Int> => n,
+    <n:Word> => n,
+    <n:Float> => n,
+    <n:Char> => n,
+    <n:Bool> => n,
+    <n:String> => n,
+    <n:Attribute> => n,
+    <n:Tuple> => n,
+    "$" <BoxPattern> => Ast::Pattern(<>),
     <Block>,
-    "(" <Expr> ")",
+}
+
+BoxPrefix: Ast =
+    <o:PrefixOp?> <s:BoxValue> => if let Some(o) = o {
+        Ast::Prefix(o.chars().filter(|v| !v.is_whitespace()).collect(), Box::new(s))
+    } else {
+        s
+    };
+
+BoxMulDivMod: Ast = InfixLOp<BoxMulDivMod, MulDivModOp, BoxPrefix>;
+BoxAddSub: Ast = InfixLOp<BoxAddSub, AddSubOp, BoxMulDivMod>;
+BoxBitshift: Ast = InfixLOp<BoxBitshift, r"<<|>>", BoxAddSub>;
+BoxCompare: Ast = InfixLOp<BoxCompare, r"<=?|==|!=|>=?", BoxBitshift>;
+BoxBitAnd: Ast = InfixLOp<BoxBitAnd, "&", BoxCompare>;
+BoxBitOr: Ast = InfixLOp<BoxBitOr, "|", BoxBitAnd>;
+BoxBitXor: Ast = InfixLOp<BoxBitXor, "^", BoxBitOr>;
+BoxBoolAnd: Ast = InfixLOp<BoxBoolAnd, "&&", BoxBitXor>;
+BoxBoolOr: Ast = InfixLOp<BoxBoolOr, "||", BoxBoolAnd>;
+BoxBoolXor: Ast = InfixLOp<BoxBoolXor, "^^", BoxBoolOr>;
+BoxAssign: Ast = InfixROp<BoxBoolXor, r"(<<|>>|[*/%+\-&|^])?=", BoxAssign>;
+
+BoxExpr: Ast = {
+    <BoxAssign>,
+    "[" <t:Type> "]" <e:BoxExpr> => Ast::TypeCast(t, Box::new(e)),
 }
 
 Box: Ast =
-    <v:(<BoxIdentifier> <(<BoxExpr>)*>)> <mut vs:(<SymbolRaw> <(<BoxExpr>)*>)*> => {
+    <v:(<BoxIdentifier> <BoxExpr> <(<Block>)?>)> <mut vs:(<SymbolRaw> <BoxExpr> <(<Block>)?>)*> => {
         vs.insert(0, v);
-        Ast::Box(vs.into_iter().map(|v| (String::from(v.0), v.1)).collect())
+        Ast::Box(vs.into_iter().map(|v| (String::from(v.0), vec![Some(v.1), v.2].into_iter().flatten().collect())).collect())
     };
 
 Expr: Ast = {

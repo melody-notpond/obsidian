@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::ast::Ast;
-use super::super::super::middleend::ir::{IrModule, SExpr, SExprMetadata, NativeOperation};
+use super::super::super::middleend::ir::{IrModule, SExpr, SExprMetadata, NativeOperation, Pattern};
 use super::super::super::middleend::types::Type;
 
 #[derive(Debug)]
@@ -16,6 +16,7 @@ pub enum IrError {
     InvalidThrow,
     InvalidUnreachable,
     InvalidIf,
+    InvalidCond,
     InvalidTry,
     InvalidMatch,
     InvalidLoop,
@@ -247,7 +248,7 @@ fn lowering_helper(ast: Ast) -> Result<SExpr, IrError> {
                     }
 
                     "unreachable" => {
-                        if vals.len() == 1 && vals[0].1.is_empty() {
+                        if vals.len() == 1 && (vals[0].1.is_empty() || vals[0].1.len() == 1) {
                             Ok(SExpr::Unreachable(SExprMetadata::new(0..0)))
                         } else {
                             Err(IrError::InvalidUnreachable)
@@ -255,31 +256,75 @@ fn lowering_helper(ast: Ast) -> Result<SExpr, IrError> {
                     }
 
                     "if" => {
-                        let mut top = None;
-                        let mut was_if = false;
-                        for (name, mut vals) in vals.into_iter().rev() {
-                            match name.as_str() {
-                                "if" if !was_if && vals.len() == 2 => {
-                                    let body = lowering_helper(vals.remove(1))?;
-                                    let cond = lowering_helper(vals.remove(0))?;
-                                    top = Some(SExpr::If(SExprMetadata::new(0..0), Box::new(cond), Box::new(body), top.map(Box::new)));
-                                    was_if = true;
-                                }
-
-                                "else" if was_if && vals.is_empty() => was_if = false,
-
-                                "else" if top.is_none() && vals.len() == 1 => {
-                                    top = Some(lowering_helper(vals.remove(0))?);
-                                }
-
-                                _ => return Err(IrError::InvalidIf),
+                        if vals.len() == 1 {
+                            let (_, mut v) = vals.remove(0);
+                            if v.len() == 2 {
+                                let body = lowering_helper(v.remove(1))?;
+                                let cond = lowering_helper(v.remove(0))?;
+                                Ok(SExpr::If(SExprMetadata::new(0..0), Box::new(cond), Box::new(body), None))
+                            } else {
+                                Err(IrError::InvalidIf)
                             }
-                        }
+                        } else if vals.len() == 2 {
+                            let (name, mut elsy) = vals.remove(1);
+                            let (_, mut then) = vals.remove(0);
 
-                        if let Some(top) = top {
-                            Ok(top)
+                            if name == "else" && then.len() == 2 && elsy.len() == 1 {
+                                let elsy = lowering_helper(elsy.remove(0))?;
+                                let body = lowering_helper(then.remove(1))?;
+                                let cond = lowering_helper(then.remove(0))?;
+                                Ok(SExpr::If(SExprMetadata::new(0..0), Box::new(cond), Box::new(body), Some(Box::new(elsy))))
+                            } else {
+                                Err(IrError::InvalidIf)
+                            }
                         } else {
                             Err(IrError::InvalidIf)
+                        }
+                    }
+
+                    "cond" => {
+                        if vals.len() == 1 && vals[0].1.len() == 1 {
+                            let (_, mut vals) = vals.remove(0);
+                            let body = vals.remove(0);
+
+                            if let Ast::Block(mut cases, _) = body {
+                                let mut top = match cases.last_mut() {
+                                    Some(Ast::Box(v)) if v.len() == 1 && v[0].0 == "else" && v[0].1.len() == 1 => {
+                                        let (_, mut v) = v.remove(v.len() - 1);
+                                        let v = v.remove(0);
+                                        Some(lowering_helper(v)?)
+                                    }
+                                    _ => None
+                                };
+                                if top.is_some() {
+                                    cases.pop();
+                                }
+
+                                while let Some(v) = cases.pop() {
+                                    if let Ast::Box(mut v) = v {
+                                        if v.len() == 1 && v[0].0 == "case" && v[0].1.len() == 2 {
+                                            let (_, mut v) = v.remove(0);
+                                            let body = lowering_helper(v.remove(1))?;
+                                            let cond = lowering_helper(v.remove(0))?;
+                                            top = Some(SExpr::If(SExprMetadata::new(0..0), Box::new(cond), Box::new(body), top.map(Box::new)));
+                                        } else {
+                                            return Err(IrError::InvalidCond);
+                                        }
+                                    } else {
+                                        return Err(IrError::InvalidCond);
+                                    }
+                                }
+
+                                if let Some(v) = top {
+                                    Ok(v)
+                                } else {
+                                    Err(IrError::InvalidCond)
+                                }
+                            } else {
+                                Err(IrError::InvalidCond)
+                            }
+                        } else {
+                            Err(IrError::InvalidCond)
                         }
                     }
 
@@ -346,21 +391,22 @@ fn lowering_helper(ast: Ast) -> Result<SExpr, IrError> {
                     }
 
                     "loop" => {
-                        if vals.len() == 1 {
-                            if vals[0].1.len() == 1 {
-                                Ok(SExpr::Loop(SExprMetadata::new(0..0), None, Box::new(lowering_helper(vals[0].1.remove(0))?)))
-                            } else if vals[0].1.len() == 3 {
-                                let body = lowering_helper(vals[0].1.remove(2))?;
-                                let initial = lowering_helper(vals[0].1.remove(1))?;
-                                let p = if let Ast::Pattern(p) = vals[0].1.remove(0) {
-                                    p
-                                } else {
-                                    return Err(IrError::InvalidLoop);
-                                };
-                                Ok(SExpr::Loop(SExprMetadata::new(0..0), Some((p, Box::new(initial))), Box::new(body)))
+                        if vals.len() == 1 && vals[0].1.len() == 1 {
+                            Ok(SExpr::Loop(SExprMetadata::new(0..0), None, Box::new(lowering_helper(vals[0].1.remove(0))?)))
+                        } else if vals.len() == 2 && vals[0].1.len() == 1 && vals[1].0 == "as" && vals[1].1.len() == 2 {
+                            let (_, mut v) = vals.remove(1);
+                            let body = lowering_helper(v.remove(1))?;
+                            let pat = v.remove(0);
+                            let pat = if let Ast::Pattern(p) = pat {
+                                p
+                            } else if let Ast::Symbol(s) = pat {
+                                Pattern::Name(s)
                             } else {
-                                Err(IrError::InvalidLoop)
-                            }
+                                return Err(IrError::InvalidLoop);
+                            };
+                            let (_, mut val) = vals.remove(0);
+                            let val = lowering_helper(val.remove(0))?;
+                            Ok(SExpr::Loop(SExprMetadata::new(0..0), Some((pat, Box::new(val))), Box::new(body)))
                         } else {
                             Err(IrError::InvalidLoop)
                         }

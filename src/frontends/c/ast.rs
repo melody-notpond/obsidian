@@ -25,7 +25,7 @@ pub enum Ast {
     Block(Vec<Ast>, bool),
     Box(Vec<(String, Vec<Ast>)>),
     FuncDef(String, Vec<(String, Type)>, Type, Box<Ast>),
-    Struct(String, HashMap<String, Type>),
+    Struct(String, Vec<(String, Type)>),
     Enum(String, Type, Vec<(String, Option<u64>)>),
 }
 
