@@ -29,8 +29,8 @@ fn lowering_helper(ast: Ast) -> Result<SExpr, IrError> {
         Ast::Word(w) => Ok(SExpr::Word(SExprMetadata::new(0..0), w)),
         Ast::Float(f) => Ok(SExpr::Float(SExprMetadata::new(0..0), f)),
         Ast::Char(c) => Ok(SExpr::Char(SExprMetadata::new(0..0), c)),
-        Ast::True => Ok(SExpr::Bool(SExprMetadata::new_with_type(0..0, Type::Bool), true)),
-        Ast::False => Ok(SExpr::Bool(SExprMetadata::new_with_type(0..0, Type::Bool), false)),
+        Ast::True => Ok(SExpr::Int(SExprMetadata::new_with_type(0..0, Type::U(1)), 1)),
+        Ast::False => Ok(SExpr::Int(SExprMetadata::new_with_type(0..0, Type::U(1)), 0)),
         Ast::String(s) => Ok(SExpr::String(SExprMetadata::new_with_type(0..0, Type::ConstRef(Box::new(Type::TypeName(String::from("str"), vec![])))), s)),
         Ast::Symbol(s) => Ok(SExpr::Symbol(SExprMetadata::new(0..0), s)),
 

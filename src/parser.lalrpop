@@ -206,17 +206,10 @@ BoolXor: Ast = InfixLOp<BoolXor, "^^", BoolOr>;
 Assign: Ast = InfixROp<BoolXor, r"(<<|>>|[*/%+\-&|^])?=", Assign>;
 
 Type: Type = {
-    "i8" => Type::I8,
-    "i16" => Type::I16,
-    "i32" => Type::I32,
-    "i64" => Type::I64,
+    "i[1-9][0-9]+" =>? <>[1..].parse().map_err(|v| ParseError::User { error: Error::NumberTooBig }).map(Type::I),
+    "u[1-9][0-9]+" =>? <>[1..].parse().map_err(|v| ParseError::User { error: Error::NumberTooBig }).map(Type::I),
     "isize" => Type::ISize,
-    "u8" => Type::U8,
-    "u16" => Type::U16,
-    "u32" => Type::U32,
-    "u64" => Type::U64,
     "usize" => Type::USize,
-    "bool" => Type::Bool,
 
     "f32" => Type::F32,
     "f64" => Type::F64,
@@ -431,7 +424,7 @@ EnumVariants: (&'input str, Option<u64>) = {
 
 Enum: Ast =
     "enum" <s:SymbolRaw> <t:(":" <Type>)?> "{" <v:Comma<EnumVariants>> "}" =>
-        Ast::Enum(String::from(s), t.unwrap_or(Type::I32), v.into_iter().map(|v| (String::from(v.0), v.1)).collect());
+        Ast::Enum(String::from(s), t.unwrap_or(Type::I(32)), v.into_iter().map(|v| (String::from(v.0), v.1)).collect());
 
 TopExpr: Ast = {
     <Box> ";",

@@ -76,7 +76,6 @@ pub enum SExpr {
     Float(SExprMetadata, f64),
     Word(SExprMetadata, u64),
     Char(SExprMetadata, u8),
-    Bool(SExprMetadata, bool),
 
     // String
     String(SExprMetadata, String),
@@ -176,7 +175,6 @@ impl SExpr {
             | SExpr::Float(m, _)
             | SExpr::Word(m, _)
             | SExpr::Char(m, _)
-            | SExpr::Bool(m, _)
             | SExpr::String(m, _)
             | SExpr::Symbol(m, _)
             | SExpr::Native(m, _, _)
@@ -213,7 +211,6 @@ impl SExpr {
             | SExpr::Float(m, _)
             | SExpr::Word(m, _)
             | SExpr::Char(m, _)
-            | SExpr::Bool(m, _)
             | SExpr::String(m, _)
             | SExpr::Symbol(m, _)
             | SExpr::Native(m, _, _)

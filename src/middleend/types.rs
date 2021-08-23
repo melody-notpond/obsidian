@@ -6,19 +6,12 @@ pub enum Type {
     Unknown(usize),
 
     Nil,
-    Bool,
 
     UnassignedInt,
     UnknownInt(usize),
-    I8,
-    I16,
-    I32,
-    I64,
+    I(usize),
     ISize,
-    U8,
-    U16,
-    U32,
-    U64,
+    U(usize),
     USize,
 
     UnassignedFloat,
@@ -45,19 +38,13 @@ impl Type {
 
         match (self, supertype) {
             (Nil, Nil)
-            | (Bool, Bool)
-            | (I8, I8)
-            | (I16, I16)
-            | (I32, I32)
-            | (I64, I64)
             | (ISize, ISize)
-            | (U8, U8)
-            | (U16, U16)
-            | (U32, U32)
-            | (U64, U64)
             | (USize, USize)
             | (F32, F32)
             | (F64, F64) => true,
+
+            (I(i), I(j))
+            | (U(i), U(j)) => i == j,
 
             (ConstRef(t1), ConstRef(t2))
             | (MutRef(t1), MutRef(t2))
