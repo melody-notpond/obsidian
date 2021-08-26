@@ -1,3 +1,4 @@
+/*
 struct Vec {
     len: usize,
     cap: usize,
@@ -111,4 +112,21 @@ fn main() {
             do_something();
         }
     };
+}
+*/
+
+struct MyStruct {
+    a: i32,
+    b: i32,
+}
+
+fn new() [MyStruct] {
+    MyStruct {
+        a: 1,
+        b: 2
+    }
+}
+
+fn new() [i32] {
+    42
 }

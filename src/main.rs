@@ -2,6 +2,7 @@ use std::fs;
 
 use obsidian::frontends::c::macros;
 use obsidian::frontends::c::ir;
+use obsidian::middleend::correctness;
 
 #[macro_use]
 extern crate lalrpop_util;
@@ -17,6 +18,8 @@ fn main() {
 
     println!("\n\n{:?}", asts);
 
-    let ir = ir::lower_ast_to_ir(asts);
+    let mut ir = ir::lower_ast_to_ir(asts).unwrap();
     println!("\n\n{:?}", ir);
+    println!("\n\n{:?}", correctness::check(&mut ir));
+    println!("\n\n{:?}", ir.funcs);
 }

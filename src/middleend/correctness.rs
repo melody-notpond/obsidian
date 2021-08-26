@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 
+use crate::middleend::ir::Signature;
+
 use super::ir::{IrModule, SExpr};
 use super::types::Type;
 
+#[derive(Debug)]
 pub enum CorrectnessError {
     UntypedRootFunction,
     DuplicateSignature,
+    InvalidEnumType,
 }
 
 fn collect_root_functions(root: &mut IrModule, errors: &mut Vec<CorrectnessError>) {
-    /*
     let mut funcs = vec![];
     for (i, sexpr) in root.sexprs.iter().enumerate() {
         match sexpr {
@@ -35,48 +38,77 @@ fn collect_root_functions(root: &mut IrModule, errors: &mut Vec<CorrectnessError
             };
 
         if let Some(signatures) = root.funcs.get_mut(name) {
-            let mut index = None;
-            for (i, (args2, _)) in signatures.iter().enumerate() {
-                if args2.iter().zip(args.clone()).all(|v| v.0 == v.1) {
-                    index = Some(i);
+            let mut contained = false;
+            for (signature, _) in signatures.iter() {
+                if signature.args.iter().zip(args.clone()).all(|v| v.0 == v.1) && *ret_type == signature.ret_type {
+                    errors.push(CorrectnessError::DuplicateSignature);
+                    contained = true;
                     break;
                 }
             }
 
-            if let Some(index) = index {
-                use std::collections::hash_map::Entry::*;
-
-                let (_, rets) = signatures.get_mut(index).unwrap();
-                match rets.entry(ret_type.clone()) {
-                    Occupied(_) => {
-                        errors.push(CorrectnessError::DuplicateSignature);
-                    }
-
-                    Vacant(v) => {
-                        v.insert(func);
-                    }
-                }
-            } else {
-                let mut map = HashMap::new();
-                let args = args.cloned().collect();
-                map.insert(ret_type.clone(), func);
-                signatures.push((args, map));
+            if !contained {
+                signatures.push((Signature {
+                    args: args.cloned().collect(),
+                    ret_type: ret_type.clone(),
+                }, func));
             }
         } else {
-            let mut map = HashMap::new();
             let name = name.clone();
-            let args = args.cloned().collect();
-            map.insert(ret_type.clone(), func);
-            root.funcs.insert(name, vec![(args, map)]);
+            let signature = Signature {
+                args: args.cloned().collect(),
+                ret_type: ret_type.clone(),
+            };
+            root.funcs.insert(name, vec![(signature, func)]);
         }
     }
-    */
+}
+
+fn collect_types(root: &mut IrModule, errors: &mut Vec<CorrectnessError>) {
+    let mut types = vec![];
+    for (i, sexpr) in root.sexprs.iter().enumerate() {
+        match sexpr {
+            SExpr::Struct(_, _, _) => {
+                types.push(i);
+            }
+
+            SExpr::Enum(_, _, Type::I(_) | Type::U(_), _) => {
+                types.push(i);
+            }
+
+            SExpr::Enum(_, _, _, _) => {
+                errors.push(CorrectnessError::InvalidEnumType);
+            }
+
+            _ => (),
+        }
+    }
+
+    for (i, type_) in types.into_iter().enumerate() {
+        let type_ = root.sexprs.remove(type_ - i);
+        match &type_ {
+            SExpr::Struct(_, name, _)
+            | SExpr::Enum(_, name, _, _) => {
+                root.types.insert(name.clone(), type_);
+            }
+
+            _ => unreachable!(),
+        }
+    }
+}
+
+fn check_helper(sexpr: &mut SExpr) {
 }
 
 pub fn check(root: &mut IrModule) -> Result<(), Vec<CorrectnessError>> {
     let mut errors = vec![];
 
     collect_root_functions(root, &mut errors);
+    collect_types(root, &mut errors);
+
+    if !root.sexprs.is_empty() {
+        return Err(errors);
+    }
 
     if errors.is_empty() {
         Ok(())

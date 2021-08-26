@@ -242,12 +242,15 @@ impl SExpr {
     }
 }
 
-//                         name         arg types       return type
-pub type FuncMap = HashMap<String, Vec<(Vec<Type>, Vec<(Type, SExpr)>)>>;
+#[derive(Debug)]
+pub struct Signature {
+    pub args: Vec<Type>,
+    pub ret_type: Type,
+}
 
 #[derive(Debug)]
 pub struct IrModule {
     pub sexprs: Vec<SExpr>,
     pub types: HashMap<String, SExpr>,
-    pub funcs: FuncMap,
+    pub funcs: HashMap<String, Vec<(Signature, SExpr)>>,
 }
