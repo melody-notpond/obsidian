@@ -34,6 +34,7 @@ pub enum NativeOperation {
 pub struct SExprMetadata {
     pub span: Span,
     pub type_: Type,
+    pub signatures: Vec<Signature>,
 }
 
 impl SExprMetadata {
@@ -41,11 +42,12 @@ impl SExprMetadata {
         SExprMetadata {
             span,
             type_: Type::Unassigned,
+            signatures: vec![],
         }
     }
 
     pub fn new_with_type(span: Span, type_: Type) -> SExprMetadata {
-        SExprMetadata { span, type_ }
+        SExprMetadata { span, type_, signatures: vec![] }
     }
 }
 
@@ -242,7 +244,7 @@ impl SExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Signature {
     pub args: Vec<Type>,
     pub ret_type: Type,

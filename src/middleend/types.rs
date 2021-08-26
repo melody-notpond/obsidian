@@ -8,7 +8,9 @@ pub enum Type {
     Nil,
 
     UnassignedInt,
+    UnassignedWord,
     UnknownInt(usize),
+    UnknownWord(usize),
     I(usize),
     ISize,
     U(usize),
@@ -33,15 +35,29 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn is_unspecified(&self) -> bool {
+        !matches!(self, Type::Unassigned | Type::UnassignedInt | Type::UnassignedFloat | Type::UnassignedWord | Type::Unknown(_) | Type::UnknownInt(_) | Type::UnknownFloat(_) | Type::UnknownWord(_) | Type::Wildcard)
+    }
+
     pub fn is_subtype(&self, supertype: &Type, generic_map: &HashMap<String, Type>) -> bool {
         use Type::*;
 
         match (self, supertype) {
             (Nil, Nil)
+            | (Unassigned, _)
+            | (Unknown(_), _)
             | (ISize, ISize)
             | (USize, USize)
             | (F32, F32)
-            | (F64, F64) => true,
+            | (F64, F64)
+            | (UnassignedInt, I(_))
+            | (UnknownInt(_), I(_))
+            | (UnassignedWord, U(_))
+            | (UnknownWord(_), U(_))
+            | (UnassignedFloat, F32)
+            | (UnassignedFloat, F64)
+            | (UnknownFloat(_), F32)
+            | (UnknownFloat(_), F64) => true,
 
             (I(i), I(j))
             | (U(i), U(j)) => i == j,
